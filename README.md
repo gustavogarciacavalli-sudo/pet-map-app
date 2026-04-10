@@ -1,50 +1,71 @@
-# Welcome to your Expo app 👋
+# WanderPet 🐾 - Seu Ecossistema de Aventuras
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Bem-vindo ao **WanderPet**, um rastreador de expedições gamificado onde cada passo que você dá fortalece o seu pet e te conecta a uma comunidade de exploradores!
 
-## Get started
+O projeto é construído com **React Native + Expo**, focado em performance e uma experiência visual vibrante (Dark/Light Mode).
 
-1. Install dependencies
-   
+---
+
+## 🚀 Como Começar (Para novos Exploradores/Devs)
+
+Se você caiu de paraquedas no projeto, siga estes passos para rodar o app localmente:
+
+1. **Clonar e Instalar**:
    ```bash
+   git clone https://github.com/gustavogarciacavalli-sudo/pet-map-app.git
+   cd pet-map-app
    npm install
    ```
 
-2. Start the app
-
+2. **Iniciar o Motor**:
    ```bash
    npx expo start
    ```
+   *Escaneie o QR Code com o app **Expo Go** no seu celular para ver a mágica acontecer.*
 
-In the output, you'll find options to open the app in a
+---
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 🎮 Mecânicas Atuais (O que já temos)
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### 🗺️ Diário de Expedição
+- **Rastreamento em Tempo Real**: Captura sua localização e calcula distância percorrida.
+- **Histórico Diário**: A Database separa trajetos em "baldes diários" (`YYYY-MM-DD`).
+- **Interactive Replay**: No Perfil, clique nas barras do gráfico semanal para abrir o mapa e ver o rastro exato (Polyline) de onde você andou naquele dia.
 
-## Get a fresh project
+### 🛡️ Sistema de Clãs (Social)
+- **Fundação de Grupos**: Crie seu próprio clã e chame seus amigos.
+- **Gestão Local**: Persistência via `AsyncStorage` com suporte a múltiplos membros.
 
-When you're ready, run:
+### 🧙 Perfil Gamificado
+- **Customização**: Troca de avatares (Pets) e suporte a fotos externas (PNG).
+- **Progressão**: Ganho de moedas (PetCoins) e XP baseado na distância percorrida.
+- **Wander-ID**: Sistema de identificação única para adicionar amigos.
 
-```bash
-npm run reset-project
-```
+---
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## 🛠️ Tech Stack
+- **Framework**: [Expo](https://expo.dev/) (SDK 54+)
+- **Nativo**: React Native + Reanimated (Animações 60fps)
+- **Maps**: React Native Maps (Google Maps / OSM)
+- **Store**: AsyncStorage (Persistência Local leve)
 
-## Learn more
+---
 
-To learn more about developing your project with Expo, look at the following resources:
+## 🧭 Mural de Missões (O que vem por aí!)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Aqui estão as próximas tarefas para quem quiser contribuir:
 
-## Join the community
+- [ ] **Chat de Clã**: Sistema básico de mensagens rápidas entre membros do grupo.
+- [ ] **Loja de Itens**: Comprar acessórios (chapéu, capas) usando PetCoins.
+- [ ] **Missões Diárias**: Desafios como "Caminhe 2km hoje" para bônus de XP.
+- [ ] **Notificações**: Alertas sobre conquistas de amigos e convites de clãs.
+- [ ] **Exportação de Rota**: Salvar o trajeto do dia como uma imagem para compartilhar.
 
-Join our community of developers creating universal apps.
+---
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 🧪 Notas de Dev (Modo de Teste)
+Vá em **Perfil > Configurações** e use o botão **"🧪 DEV: Gerar Memórias Fake"** para popular o gráfico e testar o sistema de mapas sem precisar sair de casa.
+
+---
+
+*Desenvolvido com ❤️ pela equipe WanderPet.*

@@ -54,7 +54,7 @@ export default function ForgotPasswordScreen() {
             setFoundQuestion(user.securityQuestion);
             setStep(2);
         } catch (error: any) {
-            Alert.alert('Erro 🐾', error.message);
+            Alert.alert('Erro', error.message);
         } finally {
             setLoading(false);
         }
@@ -62,17 +62,17 @@ export default function ForgotPasswordScreen() {
 
     const handleReset = async () => {
         if (!answer.trim() || !newPassword.trim()) {
-            Alert.alert('Opa! 🐾', 'Preencha todos os campos!');
+            Alert.alert('Atenção', 'Preencha todos os campos.');
             return;
         }
 
         setLoading(true);
         try {
             await resetPasswordLocal(email.trim().toLowerCase(), answer, newPassword);
-            Alert.alert('Sucesso! ✨', 'Sua senha foi alterada. Tente fazer login agora!');
+            Alert.alert('Sucesso', 'Senha alterada com sucesso.');
             router.replace('/login');
         } catch (error: any) {
-            Alert.alert('Erro 🐾', error.message);
+            Alert.alert('Erro', error.message);
         } finally {
             setLoading(false);
         }
@@ -88,7 +88,7 @@ export default function ForgotPasswordScreen() {
                 <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
                     <Animated.View entering={FadeIn.duration(600)} style={styles.card}>
                         <View style={styles.header}>
-                            <Text style={styles.titleText}>Recuperar Senha 🗝️</Text>
+                            <Text style={styles.titleText}>Recuperar Senha</Text>
                             <Text style={styles.subtitle}>
                                 {step === 1 
                                     ? "Digite seu e-mail para localizarmos sua pergunta de segurança." 
@@ -151,7 +151,7 @@ export default function ForgotPasswordScreen() {
                                     }}
                                 >
                                     <TapSparkles active={sparksActive} color={C.white} />
-                                    <Text style={styles.mainBtnText}>{loading ? '🌀' : 'Buscar Pergunta 🔍'}</Text>
+                                    <Text style={styles.mainBtnText}>{loading ? '...' : 'Buscar Pergunta'}</Text>
                                 </Pressable>
                             ) : (
                                 <Pressable 
@@ -163,7 +163,7 @@ export default function ForgotPasswordScreen() {
                                     disabled={loading}
                                 >
                                     <TapSparkles active={sparksActive} color={C.white} />
-                                    <Text style={styles.mainBtnText}>{loading ? '🌀' : 'Alterar Senha! ✨'}</Text>
+                                    <Text style={styles.mainBtnText}>{loading ? '...' : 'Alterar Senha'}</Text>
                                 </Pressable>
                             )}
                             

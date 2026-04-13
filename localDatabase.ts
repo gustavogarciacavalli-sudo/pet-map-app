@@ -13,8 +13,22 @@ const VISITS_KEY = '@wanderpet_visit_grid';
 const PATH_KEY = '@wanderpet_path_history';
 const FRIENDS_KEY = '@wanderpet_friends';
 const GROUPS_KEY = '@wanderpet_groups';
+const QUESTS_CLAIMED_KEY = '@wanderpet_quests_claimed';
+const GEMS_KEY = '@wanderpet_gems';
+const SPENT_COINS_KEY = '@wanderpet_spent_coins';
+const SPENT_GEMS_KEY = '@wanderpet_spent_gems';
+const INVENTORY_KEY = '@wanderpet_inventory';
 const DAILY_DIST_PREFIX = '@wanderpet_dist_'; // + YYYY-MM-DD
 const DAILY_PATH_PREFIX = '@wanderpet_path_'; // + YYYY-MM-DD
+const CHAT_MESSAGES_KEY = '@wanderpet_chats';
+
+export interface ChatMessage {
+    id: string;
+    senderId: string;
+    receiverId: string; // Pode ser o ID do amigo ou o ID do Clã
+    text: string;
+    timestamp: number;
+}
 
 export interface LocalGroup {
     id: string;
@@ -42,6 +56,7 @@ export interface LocalPet {
     species: Species;
     accessory: string;
     personality: string;
+    customImageUri?: string;
 }
 
 // ─── TEMA ───
@@ -59,6 +74,52 @@ export const saveThemeLocal = async (theme: 'light' | 'dark'): Promise<void> => 
 };
 
 // ─── ECONOMIA ───
+// O saldo real pode cair, o gasto acumulado serve inteiramente para metrificação da árvore de missões
+export const getSpentCoinsLocal = async (): Promise<number> => {
+    const val = await AsyncStorage.getItem(SPENT_COINS_KEY);
+    return val ? parseInt(val, 10) : 0;
+};
+export const addSpentCoinsLocal = async (amount: number): Promise<void> => {
+    const total = (await getSpentCoinsLocal()) + amount;
+    await AsyncStorage.setItem(SPENT_COINS_KEY, total.toString());
+};
+
+export const getSpentGemsLocal = async (): Promise<number> => {
+    const val = await AsyncStorage.getItem(SPENT_GEMS_KEY);
+    return val ? parseInt(val, 10) : 0;
+};
+export const addSpentGemsLocal = async (amount: number): Promise<void> => {
+    const total = (await getSpentGemsLocal()) + amount;
+    await AsyncStorage.setItem(SPENT_GEMS_KEY, total.toString());
+};
+
+export const getGemsLocal = async (): Promise<number> => {
+    const gems = await AsyncStorage.getItem(GEMS_KEY);
+    // Dinâmica de "Seed": Se a carteira de diamantes não existir, dá 150 gemas grátis como boas vindas MVP
+    if (gems === null) {
+        await AsyncStorage.setItem(GEMS_KEY, '150');
+        return 150;
+    }
+    return parseInt(gems, 10);
+};
+
+export const saveGemsLocal = async (amount: number): Promise<void> => {
+    await AsyncStorage.setItem(GEMS_KEY, amount.toString());
+};
+
+// ─── INVENTÁRIO (COSMÉTICOS) ───
+export const getInventoryLocal = async (): Promise<string[]> => {
+    const inv = await AsyncStorage.getItem(INVENTORY_KEY);
+    return inv ? JSON.parse(inv) : [];
+};
+export const addToInventoryLocal = async (itemId: string): Promise<void> => {
+    const inv = await getInventoryLocal();
+    if (!inv.includes(itemId)) {
+        inv.push(itemId);
+        await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inv));
+    }
+};
+
 export const getCoinsLocal = async (): Promise<number> => {
     try {
         const coinsString = await AsyncStorage.getItem(COINS_KEY);
@@ -138,7 +199,7 @@ export const signUpLocal = async (
         const normalizedEmail = email.trim().toLowerCase();
         
         if (users.find(u => u.email === normalizedEmail)) {
-            throw new Error('Este e-mail já está cadastrado.');
+            throw new Error('Esta conta já existe');
         }
 
         const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -172,7 +233,7 @@ export const signInLocal = async (email: string, password?: string): Promise<Loc
         const user = users.find(u => u.email === normalizedEmail && (!password || u.password === password));
         
         if (!user) {
-            throw new Error('E-mail ou senha incorretos.');
+            throw new Error('Conta não encontrada');
         }
 
         return user;
@@ -209,6 +270,26 @@ export const getAllUsersLocal = async (): Promise<LocalUser[]> => {
 
 export const finalizeLoginLocal = async (user: LocalUser): Promise<void> => {
     await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+};
+
+export const resetPasswordLocal = async (email: string, answer: string, newPassword: string): Promise<LocalUser> => {
+    const usersJson = await AsyncStorage.getItem(USERS_KEY);
+    const users: LocalUser[] = usersJson ? JSON.parse(usersJson) : [];
+    const normalizedEmail = email.trim().toLowerCase();
+    
+    const idx = users.findIndex(u => u.email === normalizedEmail);
+    if (idx === -1) {
+        throw new Error('Conta não encontrada.');
+    }
+    
+    if (users[idx].securityAnswer !== answer.trim().toLowerCase()) {
+        throw new Error('Resposta de segurança incorreta.');
+    }
+    
+    users[idx].password = newPassword;
+    await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
+    
+    return users[idx];
 };
 
 // ─── PET ───
@@ -489,4 +570,74 @@ export const createGroupLocal = async (name: string): Promise<LocalGroup> => {
     groups.push(newGroup);
     await AsyncStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
     return newGroup;
+};
+
+// ─── QUESTS (MISSÕES) ───
+export const getClaimedQuestsLocal = async (): Promise<string[]> => {
+    try {
+        const json = await AsyncStorage.getItem(QUESTS_CLAIMED_KEY);
+        return json ? JSON.parse(json) : [];
+    } catch {
+        return [];
+    }
+};
+
+export const claimQuestLocal = async (questId: string): Promise<void> => {
+    const claimed = await getClaimedQuestsLocal();
+    if (!claimed.includes(questId)) {
+        claimed.push(questId);
+        await AsyncStorage.setItem(QUESTS_CLAIMED_KEY, JSON.stringify(claimed));
+    }
+};
+
+// ─── CHAT EFÊMERO ───
+
+const CHAT_EXPIRATION_MS = 60 * 60 * 1000; // 1 Hora
+
+export const getChatMessagesLocal = async (userId: string, targetId: string): Promise<ChatMessage[]> => {
+    const chatsJson = await AsyncStorage.getItem(CHAT_MESSAGES_KEY);
+    const chats: ChatMessage[] = chatsJson ? JSON.parse(chatsJson) : [];
+    
+    const now = Date.now();
+    
+    // Filtramos apenas mensagens entre esses dois usuários E que não expiraram
+    return chats.filter(msg => {
+        const isParticipant = (msg.senderId === userId && msg.receiverId === targetId) ||
+                              (msg.senderId === targetId && msg.receiverId === userId);
+        const isNotExpired = (now - msg.timestamp) < CHAT_EXPIRATION_MS;
+        return isParticipant && isNotExpired;
+    });
+};
+
+export const sendMessageLocal = async (senderId: string, receiverId: string, text: string): Promise<ChatMessage> => {
+    const chatsJson = await AsyncStorage.getItem(CHAT_MESSAGES_KEY);
+    let chats: ChatMessage[] = chatsJson ? JSON.parse(chatsJson) : [];
+    
+    const newMessage: ChatMessage = {
+        id: 'msg_' + Date.now(),
+        senderId,
+        receiverId,
+        text,
+        timestamp: Date.now()
+    };
+    
+    chats.push(newMessage);
+    
+    // Limpeza oportunista ao enviar mensagem
+    const now = Date.now();
+    chats = chats.filter(msg => (now - msg.timestamp) < CHAT_EXPIRATION_MS);
+    
+    await AsyncStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(chats));
+    return newMessage;
+};
+
+export const clearExpiredChatsLocal = async (): Promise<void> => {
+    const chatsJson = await AsyncStorage.getItem(CHAT_MESSAGES_KEY);
+    if (!chatsJson) return;
+    
+    const chats: ChatMessage[] = JSON.parse(chatsJson);
+    const now = Date.now();
+    const activeChats = chats.filter(msg => (now - msg.timestamp) < CHAT_EXPIRATION_MS);
+    
+    await AsyncStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(activeChats));
 };

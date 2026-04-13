@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Alert, Switch, Modal, TextInput, Clipboard } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { PetPreview } from '../../components/PetPreview';
-import { getPetLocal, LocalPet, getCurrentUserLocal, LocalUser, getCoinsLocal, getLevelDataLocal, logoutLocal, updatePetLocal, checkNameAvailabilityLocal, getTotalDistanceLocal, getWeeklyActivityLocal, getPathByDateLocal, generateFakeHistoryLocal } from '../../localDatabase';
+import { PetPreview } from './PetPreview';
+import { getPetLocal, LocalPet, getCurrentUserLocal, LocalUser, getCoinsLocal, getLevelDataLocal, logoutLocal, updatePetLocal, checkNameAvailabilityLocal, getTotalDistanceLocal, getWeeklyActivityLocal, getPathByDateLocal, generateFakeHistoryLocal } from '../localDatabase';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
-import { MapViewProvider, MapPolyline } from '../../components/MapViewProvider';
-import { useTheme } from '../../components/ThemeContext';
+import { MapViewProvider, MapPolyline } from './MapViewProvider';
+import { useTheme } from './ThemeContext';
 
-export default function ProfileScreen() {
+export function ProfileView() {
     const router = useRouter();
     const { colors, theme, toggleTheme, isDarkMode } = useTheme();
     
@@ -34,7 +34,7 @@ export default function ProfileScreen() {
         setDistance(d);
         setWeeklyActivity(activity);
         setTempName(p?.name || '');
-        setTempSpecies(p?.species || '🐶');
+        setTempSpecies(p?.species || 'bunny');
         setTempImageUri(p?.customImageUri || null);
     }
 
@@ -47,7 +47,7 @@ export default function ProfileScreen() {
     // Estados para Edição
     const [isEditModalVisible, setIsEditModalVisible] = useState(false);
     const [tempName, setTempName] = useState('');
-    const [tempSpecies, setTempSpecies] = useState('🐶');
+    const [tempSpecies, setTempSpecies] = useState('bunny');
     const [tempImageUri, setTempImageUri] = useState<string | null>(null);
 
     // Estados para o Diário de Expedição
@@ -81,7 +81,7 @@ export default function ProfileScreen() {
     const pickImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
-            Alert.alert("Permissão negada 🚫", "Precisamos de acesso à sua galeria para você escolher uma foto.");
+            Alert.alert("Permissão negada", "Precisamos de acesso à sua galeria para você escolher uma foto.");
             return;
         }
 
@@ -106,7 +106,7 @@ export default function ProfileScreen() {
         if (user && tempName !== pet?.name) {
             const isAvailable = await checkNameAvailabilityLocal(tempName, user.id);
             if (!isAvailable) {
-                Alert.alert("Nome Ocupado 🛡️", "Este nome já foi clamado por outro explorador!");
+                Alert.alert("Nome Ocupado", "Este nome já foi clamado por outro explorador.");
                 return;
             }
         }
@@ -119,12 +119,12 @@ export default function ProfileScreen() {
         if (updated) {
             setPet(updated);
             setIsEditModalVisible(false);
-            Alert.alert("Sucesso! ✨", "Seu perfil foi atualizado.");
+            Alert.alert("Sucesso", "Seu perfil foi atualizado.");
         }
     };
 
     const handleLogout = () => {
-        Alert.alert('Sair 🐾', 'Tem certeza que deseja sair?', [
+        Alert.alert('Sair', 'Tem certeza que deseja sair?', [
             { text: 'Cancelar', style: 'cancel' },
             { text: 'Sair', style: 'destructive', onPress: async () => { await logoutLocal(); router.replace('/login'); } }
         ]);
@@ -133,14 +133,14 @@ export default function ProfileScreen() {
     const copyToClipboard = () => {
         if (user?.wanderId) {
             Clipboard.setString(user.wanderId);
-            Alert.alert('Copiado! 📋', 'Seu Wander-ID foi copiado.');
+            Alert.alert('Copiado', 'Seu Wander-ID foi copiado.');
         }
     };
 
     const nextLevelXP = levelData.level * 200;
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[{ flex: 1, backgroundColor: colors.background }]}>
             <ScrollView contentContainerStyle={styles.scroll}>
                 <View style={styles.header}>
                     <Text style={[styles.title, { color: colors.text }]}>Meu Perfil</Text>
@@ -151,10 +151,10 @@ export default function ProfileScreen() {
 
                 {/* Card do Pet & ID */}
                 <View style={[styles.petCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                     <View style={styles.previewWrapper}>
+                    <View style={styles.previewWrapper}>
                         {pet ? (
                             <View style={[styles.avatarCircle, { borderColor: colors.primary }]}>
-                                <PetPreview species={pet.species} accessory={pet.accessory} customImageUri={pet.customImageUri} />
+                                <PetPreview species={pet?.species || 'bunny'} accessory={pet?.accessory} customImageUri={pet?.customImageUri} />
                             </View>
                         ) : (
                             <Text style={{ color: colors.text }}>Carregando...</Text>
@@ -179,52 +179,65 @@ export default function ProfileScreen() {
                     </View>
                 </View>
 
-                {/* ESTATÍSTICAS DE AVENTURA */}
+                {/* TIMELINE — Hoje (Life360 style) */}
                 <View style={[styles.adventureStats, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <Text style={[styles.sectionTitle, { color: colors.primary }]}>ESTATÍSTICAS DE AVENTURA</Text>
+                    <Text style={[styles.sectionTitle, { color: colors.primary }]}>HOJE</Text>
                     
-                    <View style={styles.statsRow}>
-                        <View style={styles.statBox}>
-                            <View style={[styles.statIcon, { backgroundColor: colors.primary + '22' }]}>
-                                <Ionicons name="map" size={20} color={colors.primary} />
+                    {/* Card de estadia */}
+                    <View style={[styles.timelineCard, { borderColor: colors.border }]}>
+                        <View style={styles.timelineCardContent}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.timelinePlace, { color: colors.text }]}>Localização Atual</Text>
+                                <Text style={[styles.timelineTime, { color: colors.subtext }]}>
+                                    {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </Text>
+                                <View style={styles.timelineDuration}>
+                                    <Ionicons name="time-outline" size={12} color={colors.subtext} />
+                                    <Text style={[styles.timelineDurationText, { color: colors.subtext }]}>Desde agora</Text>
+                                </View>
                             </View>
-                            <View>
-                                <Text style={[styles.statLabel, { color: colors.subtext }]}>Total Percorrido</Text>
-                                <Text style={[styles.statValue, { color: colors.text }]}>{(distance / 1000).toFixed(2)} km</Text>
+                            <View style={[styles.timelinePin, { backgroundColor: colors.primary + '15' }]}>
+                                <Ionicons name="location" size={24} color={colors.primary} />
                             </View>
                         </View>
+                    </View>
 
-                        <View style={styles.statBox}>
-                            <View style={[styles.statIcon, { backgroundColor: '#FFD70022' }]}>
-                                <Ionicons name="footsteps" size={20} color="#FFD700" />
-                            </View>
-                            <View>
-                                <Text style={[styles.statLabel, { color: colors.subtext }]}>Na Semana</Text>
-                                <View style={styles.chartContainer}>
-                                    {weeklyActivity.map((item, i) => {
-                                        const maxDist = Math.max(...weeklyActivity.map(a => a.distance), 1);
-                                        const h = (item.distance / maxDist) * 35;
-                                        return (
-                                            <Pressable 
-                                                key={item.date} 
-                                                onPress={() => handleDayPress(item)}
-                                                style={[styles.bar, { 
-                                                    height: Math.max(5, h), 
-                                                    backgroundColor: i === 6 ? colors.primary : colors.subtext + '44' 
-                                                }]} 
-                                            />
-                                        );
-                                    })}
+                    {/* Card de viagem */}
+                    <View style={[styles.timelineCard, { borderColor: colors.border }]}>
+                        <View style={[styles.tripMapPreview, { backgroundColor: isDarkMode ? '#1A1A24' : '#F0F0F4' }]}>
+                            <Ionicons name="navigate" size={20} color={colors.primary} />
+                            <Text style={[styles.tripRoute, { color: colors.subtext }]}>{(distance / 1000).toFixed(1)} km percorridos</Text>
+                        </View>
+                        <View style={styles.timelineCardContent}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.timelinePlace, { color: colors.text }]}>Expedição do Dia</Text>
+                                <Text style={[styles.timelineTime, { color: colors.subtext }]}>Total: {(distance / 1000).toFixed(2)} km</Text>
+                                <View style={styles.tripStats}>
+                                    <View style={styles.tripStat}>
+                                        <Ionicons name="speedometer-outline" size={12} color={colors.subtext} />
+                                        <Text style={[styles.tripStatText, { color: colors.subtext }]}>- km/h</Text>
+                                    </View>
                                 </View>
                             </View>
                         </View>
+                    </View>
+
+                    {/* Atividade semanal */}
+                    <View style={{ marginTop: 16, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around', height: 50 }}>
+                        {weeklyActivity.map((item, i) => {
+                            const maxDist = Math.max(...weeklyActivity.map(a => a.distance), 1);
+                            const h = (item.distance / maxDist) * 40;
+                            return (
+                                <Pressable key={item.date} onPress={() => handleDayPress(item)} style={[styles.bar, { height: Math.max(4, h), backgroundColor: i === 6 ? colors.primary : colors.subtext + '33' }]} />
+                            );
+                        })}
                     </View>
                 </View>
 
                 {/* Stats Econômicos */}
                 <View style={[styles.metaStats, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <View style={styles.metaRow}>
-                        <FontAwesome5 name="coins" size={18} color={colors.accent} />
+                        <Ionicons name="wallet" size={18} color={colors.primary} />
                         <View style={{ flex: 1 }}>
                             <Text style={[styles.statLabel, { color: colors.subtext }]}>PetCoins</Text>
                             <Text style={[styles.statValue, { color: colors.text }]}>{coins} moedas</Text>
@@ -256,7 +269,7 @@ export default function ProfileScreen() {
                     </View>
                     <Pressable style={styles.optionItem} onPress={async () => {
                         await generateFakeHistoryLocal();
-                        Alert.alert("Dev Mode 🧪", "Histórico de 7 dias gerado com sucesso!");
+                        Alert.alert("Dev Mode", "Histórico de 7 dias gerado com sucesso.");
                         load();
                     }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -267,7 +280,7 @@ export default function ProfileScreen() {
                     </Pressable>
                 </View>
 
-                <Text style={[styles.version, { color: colors.subtext }]}>WanderPet v1.2.0 🐾</Text>
+                <Text style={[styles.version, { color: colors.subtext }]}>WanderPet v2.0.0</Text>
             </ScrollView>
 
             {/* Modal Edit */}
@@ -280,7 +293,7 @@ export default function ProfileScreen() {
                         
                         <Text style={[styles.inputLabel, { marginTop: 15 }]}>ESCOLHA SEU AVATAR</Text>
                         <View style={styles.avatarGrid}>
-                            {['🐶', '🐱', '🐰', '🦊', '🦜', '🐺'].map(s => (
+                            {['bunny', 'puppy', 'cat', 'fox', 'parrot', 'wolf'].map(s => (
                                 <Pressable key={s} onPress={() => { setTempSpecies(s as any); setTempImageUri(null); }} style={[styles.avatarOpt, (tempSpecies === s && !tempImageUri) && { borderColor: colors.primary }]}>
                                     <PetPreview species={s as any} size={40} />
                                 </Pressable>
@@ -307,7 +320,7 @@ export default function ProfileScreen() {
                         <View style={styles.expeditionHeader}>
                             <View>
                                 <Text style={[styles.expDate, { color: colors.subtext }]}>{selectedDay?.date}</Text>
-                                <Text style={[styles.expTitle, { color: colors.text }]}>Diário de Expedição 🗺️</Text>
+                                <Text style={[styles.expTitle, { color: colors.text }]}>Diário de Expedição</Text>
                             </View>
                             <Pressable onPress={() => setIsDayModalVisible(false)} style={styles.closeExpBtn}>
                                 <Ionicons name="close" size={24} color={colors.text} />
@@ -349,12 +362,11 @@ export default function ProfileScreen() {
                     </View>
                 </View>
             </Modal>
-        </SafeAreaView>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
     scroll: { padding: 20 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     title: { fontSize: 24, fontWeight: '900' },
@@ -414,4 +426,18 @@ const styles = StyleSheet.create({
     expStatValue: { fontSize: 20, fontWeight: '900' },
     expDivider: { width: 1, height: 30 },
     confirmBtn: { height: 55, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+    
+    // Timeline cards (Life360)
+    timelineCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
+    timelineCardContent: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
+    timelinePlace: { fontSize: 16, fontWeight: '700' },
+    timelineTime: { fontSize: 12, fontWeight: '500', marginTop: 4 },
+    timelineDuration: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+    timelineDurationText: { fontSize: 11, fontWeight: '600' },
+    timelinePin: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    tripMapPreview: { padding: 20, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, minHeight: 60 },
+    tripRoute: { fontSize: 12, fontWeight: '600' },
+    tripStats: { flexDirection: 'row', gap: 12, marginTop: 6 },
+    tripStat: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    tripStatText: { fontSize: 11, fontWeight: '600' },
 });

@@ -1,6 +1,8 @@
-import React from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import React, { createContext, useContext } from 'react';
+import { View, StyleSheet, Text, Pressable } from 'react-native';
 import { useTheme } from './ThemeContext';
+
+const MapContext = createContext<any>(null);
 
 interface MapViewProps {
   region: {
@@ -14,49 +16,69 @@ interface MapViewProps {
 }
 
 export function MapMarker({ coordinate, children, onPress }: any) {
-    return null; // Mock para Web
+    const region = useContext(MapContext);
+    let top = '50%';
+    let left = '50%';
+
+    if (region && coordinate) {
+        const minLon = region.longitude - 0.005;
+        const minLat = region.latitude - 0.005;
+        
+        const percX = ((coordinate.longitude - minLon) / 0.01) * 100;
+        const percY = (1 - ((coordinate.latitude - minLat) / 0.01)) * 100;
+
+        left = `${percX}%`;
+        top = `${percY}%`;
+    }
+
+    return (
+        <View style={{ 
+            position: 'absolute', 
+            top: top as any, 
+            left: left as any, 
+            transform: [{ translateX: -20 }, { translateY: -20 }], 
+            zIndex: 10 
+        }}>
+            <Pressable onPress={onPress}>
+                {children}
+            </Pressable>
+        </View>
+    );
 }
 
 export function MapPolyline({ coordinates, strokeWidth, strokeColor }: any) {
-    return null; // Mock para Web
+    return null;
 }
 
 export function MapViewProvider({ region, onPress, children }: MapViewProps) {
   const { colors, isDarkMode } = useTheme();
 
-  // Aplica filtros artísticos para o visual de jogo
-  const gameFilters = isDarkMode 
-    ? { filter: 'invert(100%) hue-rotate(180deg) brightness(80%) contrast(110%) grayscale(30%)' }
-    : { filter: 'sepia(30%) brightness(105%) hue-rotate(-10deg) saturate(90%)' };
-
   return (
     <View style={styles.webContainer}>
-        <View style={[styles.mapClippingContainer, gameFilters]}>
+        <View style={styles.mapFrame}>
             <iframe
-                title="WanderMap-Final-Clean"
-                width="125%" // Aumentado significativamente para expulsar os controles
-                height="125%" // Aumentado significativamente para expulsar os créditos do rodapé
+                title="WanderMap"
+                width="120%"
+                height="120%"
                 frameBorder="0"
                 style={{ 
                     border: 0, 
                     position: 'absolute',
-                    top: '-12.5%', // Deslocamento agressivo para cima (esconde o zoom)
-                    left: '-12.5%', // Deslocamento agressivo para o lado
+                    top: '-10%',
+                    left: '-10%',
+                    pointerEvents: 'none',
+                    filter: isDarkMode ? 'brightness(0.7) contrast(1.1) invert(1) hue-rotate(180deg)' : 'none',
                 }}
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${region.longitude - 0.005}%2C${region.latitude - 0.005}%2C${region.longitude + 0.005}%2C${region.latitude + 0.005}&layer=mapnik`}
+                src={`https://www.openstreetmap.org/export/embed.html?bbox=${region.longitude - 0.008}%2C${region.latitude - 0.006}%2C${region.longitude + 0.008}%2C${region.latitude + 0.006}&layer=mapnik`}
                 allowFullScreen
             />
         </View>
         
-        <View style={styles.webOverlay} pointerEvents="box-none">
-            {children}
-        </View>
-        
-        <View style={[styles.webInstructions, { backgroundColor: isDarkMode ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.7)' }]}>
-            <Text style={{color: colors.text, fontSize: 9, fontWeight: '900', textTransform: 'uppercase'}}>
-                {isDarkMode ? 'Exploração Noturna 🌙' : 'Mundo de Aventura ☀️'}
-            </Text>
-        </View>
+        <MapContext.Provider value={region}>
+            <View style={styles.webOverlay} pointerEvents="box-none">
+                {children}
+            </View>
+        </MapContext.Provider>
     </View>
   );
 }
@@ -66,13 +88,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     position: 'relative',
-    backgroundColor: '#1A1A1A',
     overflow: 'hidden',
   },
-  mapClippingContainer: {
+  mapFrame: {
     width: '100%',
     height: '100%',
-    opacity: 0.9,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -84,15 +104,4 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 1,
   },
-  webInstructions: {
-    position: 'absolute',
-    top: 15,
-    left: 15,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    zIndex: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
-  }
 });

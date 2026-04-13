@@ -28,6 +28,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { signInLocal, signUpLocal, getPetLocal } from '../localDatabase';
 import { TapSparkles } from '../components/TapSparkles';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ─── Interfaces ───
 interface DecoRect {
@@ -189,7 +191,7 @@ export default function LoginScreen() {
     const handleAuth = async () => {
         if (!email.trim() || !password) {
             shakeCard();
-            Alert.alert('Opa! 🐾', 'Preencha todos os campos!');
+            Alert.alert('Atenção', 'Preencha todos os campos.');
             return;
         }
         setLoading(true);
@@ -221,7 +223,7 @@ export default function LoginScreen() {
             }
         } catch (error: any) {
             shakeCard();
-            Alert.alert('Erro 🐾', error.message || "Erro ao autenticar.");
+            Alert.alert('Erro', error.message || "Erro ao autenticar.");
         } finally {
             setLoading(false);
         }
@@ -258,8 +260,8 @@ export default function LoginScreen() {
                         ))}
                         <View style={styles.card}>
                             <View style={styles.cardHeader}>
-                                <View style={styles.leafRow}><Text style={styles.leafEmoji}>🌿</Text><Text style={styles.appName}>WanderPet</Text><Text style={styles.leafEmoji}>🌿</Text></View>
-                                <Text style={styles.titleText}>{isRegistering ? 'Nova Aventura! ✨' : 'Bem-vindo de volta! 🏡'}</Text>
+                                <View style={styles.leafRow}><Text style={styles.appName}>WanderPet</Text></View>
+                                <Text style={styles.titleText}>{isRegistering ? 'Nova Aventura' : 'Bem-vindo de volta'}</Text>
                             </View>
 
                             <View style={styles.tabs}>
@@ -290,7 +292,7 @@ export default function LoginScreen() {
 
                                 {!isRegistering && (
                                     <Pressable onPress={() => router.push('/forgot-password')}>
-                                        <Text style={styles.forgotText}>Esqueceu a senha? 🗝️</Text>
+                                        <Text style={styles.forgotText}>Esqueceu a senha?</Text>
                                     </Pressable>
                                 )}
                             </View>
@@ -298,8 +300,8 @@ export default function LoginScreen() {
                             {showSuccess && (
                                 <Animated.View entering={ZoomIn.springify()} style={styles.successOverlay}>
                                     <View style={styles.successBall}>
-                                        <Text style={styles.successEmoji}>✨🎉✨</Text>
-                                        <Text style={styles.successTitle}>Conta Criada!</Text>
+                                        <Ionicons name="checkmark-circle" size={48} color={C.mint} />
+                                        <Text style={styles.successTitle}>Conta criada com sucesso</Text>
                                         <Text style={styles.successSub}>A aventura vai começar!</Text>
                                     </View>
                                 </Animated.View>
@@ -319,9 +321,19 @@ export default function LoginScreen() {
                                     style={[styles.mainBtn, { backgroundColor: isRegistering ? C.mint : C.lavender }]}
                                 >
                                     <TapSparkles active={sparksActive} />
-                                    <Text style={styles.mainBtnText}>{loading ? '🌀' : isRegistering ? 'Criar conta! 🌿' : 'Entrar! 🏡'}</Text>
+                                    <Text style={styles.mainBtnText}>{loading ? '...' : isRegistering ? 'Criar conta' : 'Entrar'}</Text>
                                 </Pressable>
                             </Animated.View>
+
+                            <Pressable 
+                                onPress={async () => {
+                                    await AsyncStorage.clear();
+                                    Alert.alert('Reset completo', 'Banco de dados local foi limpo. Você pode criar uma conta nova.');
+                                }}
+                                style={{ marginTop: 20, alignItems: 'center' }}
+                            >
+                                <Text style={{ color: C.textLight, fontSize: 13, textDecorationLine: 'underline', fontWeight: 'bold' }}>[DEV] Limpar Banco de Dados</Text>
+                            </Pressable>
                         </View>
                     </Animated.View>
                 </ScrollView>

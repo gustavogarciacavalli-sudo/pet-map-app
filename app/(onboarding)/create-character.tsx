@@ -40,28 +40,28 @@ const C = {
     primary: '#7BBF72',
 };
 
-const SPECIES_LIST: { id: Species; label: string; emoji: string }[] = [
-    { id: 'bunny', label: 'Coelho', emoji: '🐰' },
-    { id: 'puppy', label: 'Cão', emoji: '🐶' },
-    { id: 'cat', label: 'Gato', emoji: '🐱' },
-    { id: 'fox', label: 'Raposa', emoji: '🦊' },
-    { id: 'wolf', label: 'Lobo', emoji: '🐺' },
-    { id: 'bear', label: 'Urso', emoji: '🐻' },
-    { id: 'raccoon', label: 'Guaxinim', emoji: '🦝' },
-    { id: 'sheep', label: 'Ovelha', emoji: '🐑' },
-    { id: 'mouse', label: 'Rato', emoji: '🐭' },
-    { id: 'parrot', label: 'Papagaio', emoji: '🦜' },
-    { id: 'frog', label: 'Sapo', emoji: '🐸' },
-    { id: 'snake', label: 'Cobra', emoji: '🐍' },
-    { id: 'cockroach', label: 'Barata', emoji: '🪳' },
+const SPECIES_LIST: { id: Species; label: string; icon: string }[] = [
+    { id: 'bunny', label: 'Coelho', icon: 'B' },
+    { id: 'puppy', label: 'Cão', icon: 'C' },
+    { id: 'cat', label: 'Gato', icon: 'G' },
+    { id: 'fox', label: 'Raposa', icon: 'R' },
+    { id: 'wolf', label: 'Lobo', icon: 'L' },
+    { id: 'bear', label: 'Urso', icon: 'U' },
+    { id: 'raccoon', label: 'Guaxinim', icon: 'X' },
+    { id: 'sheep', label: 'Ovelha', icon: 'O' },
+    { id: 'mouse', label: 'Rato', icon: 'T' },
+    { id: 'parrot', label: 'Papagaio', icon: 'P' },
+    { id: 'frog', label: 'Sapo', icon: 'S' },
+    { id: 'snake', label: 'Cobra', icon: 'K' },
+    { id: 'cockroach', label: 'Barata', icon: 'A' },
 ];
 
 const ACCESSORIES = [
-    { value: 'none', label: 'Nenhum', emoji: '✨' },
-    { value: 'bow', label: 'Laço', emoji: '🎀' },
-    { value: 'hat', label: 'Chapéu', emoji: '🎩' },
-    { value: 'flower', label: 'Flor', emoji: '🌸' },
-    { value: 'glasses', label: 'Óculos', emoji: '🤓' },
+    { value: 'none', label: 'Nenhum', icon: '-' },
+    { value: 'bow', label: 'Laço', icon: 'L' },
+    { value: 'hat', label: 'Chapéu', icon: 'H' },
+    { value: 'flower', label: 'Flor', icon: 'F' },
+    { value: 'glasses', label: 'Óculos', icon: 'O' },
 ];
 
 const STEPS = ['species', 'accessory', 'name'] as const;
@@ -98,7 +98,7 @@ export default function CreateCharacterScreen() {
 
     const handleCreate = async () => {
         if (!petName.trim()) {
-            Alert.alert('Opa! 🐾', 'Dê um nome ao seu pet!');
+            Alert.alert('Atenção', 'Dê um nome ao seu pet.');
             return;
         }
 
@@ -111,9 +111,13 @@ export default function CreateCharacterScreen() {
                 personality: "friendly",
             });
 
-            router.replace('/(tabs)');
+            try {
+                router.replace('/(tabs)');
+            } catch (navError: any) {
+                Alert.alert('Erro de Rota', 'Falha ao iniciar: ' + navError.message);
+            }
         } catch (error: any) {
-            Alert.alert('Erro 🐾', error.message);
+            Alert.alert('Erro', error.message);
         } finally {
             setLoading(false);
         }
@@ -135,9 +139,9 @@ export default function CreateCharacterScreen() {
                 <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
                     <View style={styles.card}>
                         <View style={styles.header}>
-                            <View style={styles.leafRow}><Text style={styles.leafEmoji}>🌿</Text><Text style={styles.appName}>WanderPet</Text><Text style={styles.leafEmoji}>🌿</Text></View>
+                            <View style={styles.leafRow}><Text style={styles.appName}>WanderPet</Text></View>
                             <Text style={styles.title}>
-                                {step === 'species' ? 'Quem é você? 🐾' : step === 'accessory' ? 'Um toque final? ✨' : 'Como você será chamado pelos outros? ✏️'}
+                                {step === 'species' ? 'Quem é você?' : step === 'accessory' ? 'Um toque final?' : 'Como você será chamado pelos outros?'}
                             </Text>
                         </View>
 
@@ -155,7 +159,7 @@ export default function CreateCharacterScreen() {
                                     <View style={styles.gridSpecies}>
                                         {SPECIES_LIST.map((s) => (
                                             <Pressable key={s.id} onPress={() => setSpecies(s.id)} style={[styles.optionBtn, species === s.id && styles.optionBtnActive]}>
-                                                <Text style={styles.optionEmoji}>{s.emoji}</Text>
+                                                <Text style={styles.optionEmoji}>{s.icon}</Text>
                                                 <Text style={styles.optionText}>{s.label}</Text>
                                             </Pressable>
                                         ))}
@@ -168,7 +172,7 @@ export default function CreateCharacterScreen() {
                                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accessoryScroll}>
                                         {ACCESSORIES.map((a) => (
                                             <Pressable key={a.value} onPress={() => setAccessory(a.value)} style={[styles.accBtn, accessory === a.value && styles.accBtnActive]}>
-                                                <Text style={styles.accEmoji}>{a.emoji}</Text>
+                                                <Text style={styles.accEmoji}>{a.icon}</Text>
                                                 <Text style={[styles.accLabel, {color: accessory === a.value ? C.primary : C.text}]}>{a.label}</Text>
                                             </Pressable>
                                         ))}
@@ -184,6 +188,7 @@ export default function CreateCharacterScreen() {
                                         value={petName}
                                         onChangeText={setPetName}
                                         maxLength={15}
+                                        onSubmitEditing={() => isLast && handleCreate()}
                                         autoFocus
                                     />
                                     <View style={styles.inputUnderline} />
@@ -207,7 +212,7 @@ export default function CreateCharacterScreen() {
                                 disabled={loading}
                             >
                                 <TapSparkles active={sparksActive} color={C.white} />
-                                <Text style={styles.nextBtnText}>{loading ? '...' : isLast ? 'Vamos Lá! 🚀' : 'Próximo →'}</Text>
+                                <Text style={styles.nextBtnText}>{loading ? '...' : isLast ? 'Começar' : 'Próximo'}</Text>
                             </Pressable>
                         </View>
                     </View>

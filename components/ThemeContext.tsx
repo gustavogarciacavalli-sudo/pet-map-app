@@ -17,29 +17,29 @@ interface ThemeColors {
 }
 
 const LightTheme: ThemeColors = {
-    background: '#FFFDF7',
+    background: '#F7F7FA',
     card: '#FFFFFF',
-    border: '#F0E5D8',
-    text: '#5C4033',
-    subtext: '#9B7B6A',
-    primary: '#7DBF72',
-    accent: '#FFD700',
-    tabBg: '#FFFDF7',
-    sky: '#D4ECFF',
-    grass: '#7DBF72'
+    border: '#EEEDF2',
+    text: '#1A1A2E',
+    subtext: '#8E8E9A',
+    primary: '#7C3AED',
+    accent: '#E8DEF8',
+    tabBg: '#FFFFFF',
+    sky: '#F0EDFA',
+    grass: '#E8DEF8'
 };
 
 const DarkTheme: ThemeColors = {
-    background: '#1A1A1A',
-    card: '#2D2D2D',
-    border: '#3D3D3D',
-    text: '#F5F5F5',
-    subtext: '#A0A0A0',
-    primary: '#95D58B',
-    accent: '#FFD700',
-    tabBg: '#1A1A1A',
-    sky: '#0B132B',
-    grass: '#2D3A1F'
+    background: '#121218',
+    card: '#1C1C24',
+    border: '#2A2A36',
+    text: '#EEEDF2',
+    subtext: '#6E6E7E',
+    primary: '#9B6BF7',
+    accent: '#2D2440',
+    tabBg: '#1C1C24',
+    sky: '#0E0E18',
+    grass: '#1A1528'
 };
 
 interface ThemeContextType {

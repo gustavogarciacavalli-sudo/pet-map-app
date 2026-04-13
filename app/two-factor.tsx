@@ -11,7 +11,7 @@ import {
     StatusBar,
 } from 'react-native';
 import Animated, { FadeIn, ZoomIn, useSharedValue, useAnimatedStyle, withSequence, withTiming } from 'react-native-reanimated';
-import { signInLocal, finalizeLoginLocal, getPetLocal } from '../localDatabase';
+import { signInLocal, finalizeLoginLocal, getPetLocal, getAllUsersLocal } from '../localDatabase';
 import { TapSparkles } from '../components/TapSparkles';
 
 const C = {
@@ -55,8 +55,7 @@ export default function TwoFactorScreen() {
 
         try {
             // Buscamos o usuário no "banco" para conferir o PIN
-            const { data: usersJson } = { data: await require('@react-native-async-storage/async-storage').default.getItem('@wanderpet_users') };
-            const users = JSON.parse(usersJson || '[]');
+            const users = await getAllUsersLocal();
             const user = users.find((u: any) => u.email === email);
 
             if (user && user.twoFactorPin === pin) {
@@ -97,8 +96,8 @@ export default function TwoFactorScreen() {
 
             <Animated.View entering={FadeIn} style={styles.container}>
                 <View style={styles.card}>
-                    <View style={styles.leafRow}><Text style={styles.leafEmoji}>🌿</Text><Text style={styles.appName}>WanderPet</Text><Text style={styles.leafEmoji}>🌿</Text></View>
-                    <Text style={styles.title}>Verificação 2FA 🛡️</Text>
+                    <View style={styles.leafRow}><Text style={styles.appName}>WanderPet</Text></View>
+                    <Text style={styles.title}>Verificação 2FA</Text>
                     <Text style={styles.subtitle}>Digite seu PIN de 4 dígitos para entrar.</Text>
 
                     <Animated.View style={[styles.pinDisplay, animStyle]}>

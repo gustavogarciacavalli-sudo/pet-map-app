@@ -74,7 +74,7 @@ export function FloatingOrbitMenu() {
   const mainButtonStyle = useAnimatedStyle(() => ({
     transform: [
         { rotate: `${interpolate(mainAnim.value, [0, 1], [0, 135])}deg` },
-        { scale: withSpring(isOpen ? 1.1 : 1) }
+        { scale: interpolate(mainAnim.value, [0, 1], [1, 1.1]) }
     ]
   }));
 
@@ -139,7 +139,7 @@ export function FloatingOrbitMenu() {
         <Animated.View style={[styles.mainButton, { backgroundColor: colors.primary }]}>
           <Pressable style={styles.mainPressable} onPress={toggleMenu}>
             <Animated.View style={mainButtonStyle}>
-              <Ionicons name="add" size={32} color={isDarkMode ? '#1A1A1A' : 'white'} />
+              <Ionicons name="add" size={28} color={isDarkMode ? '#14161F' : 'white'} />
             </Animated.View>
           </Pressable>
         </Animated.View>
@@ -165,16 +165,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mainButton: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 10,
+    elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
     zIndex: 100,
   },
   mainPressable: {
@@ -193,9 +193,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     elevation: 6,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
   },
   itemPressable: {
     width: '100%',

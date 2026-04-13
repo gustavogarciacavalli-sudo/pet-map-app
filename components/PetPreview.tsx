@@ -16,10 +16,11 @@ interface PetPreviewProps {
   accessory?: string;
   name?: string;
   size?: number;
+  customImageUri?: string | null;
   onPress?: () => void;
 }
 
-export function PetPreview({ species, accessory, name, size = 150, onPress }: PetPreviewProps) {
+export function PetPreview({ species, accessory, name, size = 150, customImageUri, onPress }: PetPreviewProps) {
   const { isDarkMode } = useTheme();
   
   // Valor para animação de pulo/esguicho
@@ -56,11 +57,19 @@ export function PetPreview({ species, accessory, name, size = 150, onPress }: Pe
   return (
     <Pressable onPress={handlePress}>
       <Animated.View style={[styles.container, { width: size, height: size }, animatedStyle]}>
-        <Image 
-          source={getPetImage()} 
-          style={styles.petImage} 
-          resizeMode="contain"
-        />
+        {customImageUri ? (
+          <Image 
+            source={{ uri: customImageUri }} 
+            style={[styles.petImage, { borderRadius: size / 2, overflow: 'hidden' }]} 
+            resizeMode="cover"
+          />
+        ) : (
+          <Image 
+            source={getPetImage()} 
+            style={styles.petImage} 
+            resizeMode="contain"
+          />
+        )}
         {accessory && (
            <View style={styles.accessoryContainer}>
               {/* Lógica de renderização de acessórios viria aqui */}

@@ -26,7 +26,7 @@ import Animated, {
     SharedValue,
     ZoomIn
 } from 'react-native-reanimated';
-import { getPetLocal } from '../localDatabase';
+import { getPetLocal, signInLocal, signUpLocal } from '../localDatabase';
 import { AuthService } from '../services/AuthService';
 import { TapSparkles } from '../components/TapSparkles';
 import { Ionicons } from '@expo/vector-icons';

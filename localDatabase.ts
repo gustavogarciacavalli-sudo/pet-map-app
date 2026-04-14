@@ -21,6 +21,7 @@ const DAILY_DIST_PREFIX = '@wanderpet_dist_'; // + YYYY-MM-DD
 const DAILY_PATH_PREFIX = '@wanderpet_path_'; // + YYYY-MM-DD
 const QUESTS_CLAIMED_KEY = '@wanderpet_quests_claimed';
 const LIKES_KEY = '@wanderpet_likes';
+const RADAR_COOLDOWN_KEY = '@wanderpet_radar_cooldown';
 
 export type Species = 'bunny' | 'puppy' | 'cat' | 'sheep' | 'mouse' | 'snake' | 'fox' | 'parrot' | 'frog' | 'cockroach' | 'wolf' | 'raccoon' | 'bear';
 
@@ -110,6 +111,35 @@ export const addToInventoryLocal = async (itemId: string): Promise<void> => {
         inv.push(itemId);
         await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inv));
     }
+};
+
+/** Lógica de consumo de itens (Mochila) */
+export const consumeItemLocal = async (itemId: string): Promise<{ success: boolean, bonus?: string }> => {
+    const inv = await getInventoryLocal();
+    const idx = inv.indexOf(itemId);
+    
+    if (idx === -1) return { success: false };
+
+    // Remove o item do inventário
+    inv.splice(idx, 1);
+    await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inv));
+
+    // Aplica bônus específicos baseados no ID do item
+    let bonus = "";
+    if (itemId === 'apple') {
+        const energy = await getEnergyLocal();
+        await saveEnergyLocal(energy + 20);
+        bonus = "+20 de Energia 🍏";
+    } else if (itemId === 'potion') {
+        const energy = await getEnergyLocal();
+        await saveEnergyLocal(energy + 50);
+        bonus = "+50 de Energia 🧪";
+    } else if (itemId === 'coin_bag') {
+        await addCoinsLocal(200);
+        bonus = "+200 Moedas 💰";
+    }
+
+    return { success: true, bonus };
 };
 
 export const getCoinsLocal = async (): Promise<number> => {
@@ -628,4 +658,14 @@ export const saveSettingsLocal = async (settings: Partial<UserSettings>): Promis
 export const getGhostModeLocal = async (): Promise<boolean> => {
     const settings = await getSettingsLocal();
     return settings.ghostMode;
+};
+
+// ─── RADAR ───
+export const getRadarCooldownLocal = async (): Promise<number> => {
+    const val = await AsyncStorage.getItem(RADAR_COOLDOWN_KEY);
+    return val ? parseInt(val, 10) : 0;
+};
+
+export const saveRadarCooldownLocal = async (timestamp: number): Promise<void> => {
+    await AsyncStorage.setItem(RADAR_COOLDOWN_KEY, timestamp.toString());
 };

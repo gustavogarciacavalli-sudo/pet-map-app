@@ -306,64 +306,6 @@ export const AuthService = {
         }
     },
 
-    /**
-     * Envia uma mensagem para o Supabase
-     */
-    sendMessageCloud: async (senderId: string, receiverId: string, text: string) => {
-        try {
-            const { data, error } = await supabase
-                .from('messages')
-                .insert([{
-                    sender_id: senderId,
-                    receiver_id: receiverId,
-                    text
-                }])
-                .select()
-                .single();
-
-            if (error) throw error;
-            return data;
-        } catch (error: any) {
-            console.error("Erro ao enviar mensagem:", error);
-            throw error;
-        }
-    },
-
-    /**
-     * Escuta mensagens em tempo real entre dois usuários
-     */
-    subscribeToMessages: (userId: string, targetId: string, callback: (payload: any) => void) => {
-        return supabase
-            .channel(`chat-${userId}-${targetId}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'messages',
-                filter: `or(and(sender_id.eq.${userId},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${userId}))`
-            }, (payload) => {
-                callback(payload.new);
-            })
-            .subscribe();
-    },
-
-    /**
-     * Busca histórico de mensagens
-     */
-    fetchMessages: async (userId: string, targetId: string) => {
-        try {
-            const { data, error } = await supabase
-                .from('messages')
-                .select('*')
-                .or(`and(sender_id.eq.${userId},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${userId})`)
-                .order('created_at', { ascending: true });
-
-            if (error) throw error;
-            return data;
-        } catch (error) {
-            console.error("Erro ao buscar mensagens:", error);
-            return [];
-        }
-    },
 
     /**
      * GLÃS (GRUPOS)
@@ -685,7 +627,7 @@ export const AuthService = {
             console.error("Erro ao buscar likes:", error);
             return [];
         }
-    }
+    },
 
     /**
      * Logout

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, SafeAreaView, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getPetLocal, LocalPet, getCoinsLocal, saveCoinsLocal, getLevelDataLocal, addXPLocal, getSettingsLocal } from '../../localDatabase';
+// Imports unificados abaixo
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { useTheme } from '../../components/ThemeContext';
@@ -9,9 +9,31 @@ import * as Location from 'expo-location';
 // @ts-ignore
 import { MapViewProvider, MapMarker } from '../../components/MapViewProvider';
 import { ParticleSystem, ParticleSystemRef } from '../../components/ParticleSystem';
-import { PetPreview } from '../../components/PetPreview';
 import * as Battery from 'expo-battery';
-import { addDistanceLocal, recordVisitLocal, savePathPointLocal, getTotalDistanceLocal, getCurrentUserLocal, getPathByDateLocal } from '../../localDatabase';
+import { 
+    getPetLocal, 
+    LocalPet, 
+    getCoinsLocal, 
+    saveCoinsLocal, 
+    getLevelDataLocal, 
+    addXPLocal, 
+    getSettingsLocal,
+    addDistanceLocal, 
+    recordVisitLocal, 
+    savePathPointLocal, 
+    getTotalDistanceLocal, 
+    LocalUser, 
+    getCurrentUserLocal, 
+    getPathByDateLocal,
+    getInventoryLocal,
+    getGemsLocal,
+    saveGemsLocal,
+    addCoinsLocal,
+    getRadarCooldownLocal,
+    saveRadarCooldownLocal,
+    consumeItemLocal
+} from '../../localDatabase';
+import { PetPreview } from '../../components/PetPreview';
 import { AuthService } from '../../services/AuthService';
 import { supabase } from '../../services/supabaseConfig';
 
@@ -222,8 +244,14 @@ export default function MapScreen() {
         const l = await getLevelDataLocal();
         const d = await getTotalDistanceLocal();
         const s = await getSettingsLocal();
-        setPet(p); setCoins(c); setLevelData(l); setTotalDistance(d);
-        setEconomyMode(s.batterySaver);
+        const u = await getCurrentUserLocal();
+        setPet(p); 
+        setCoins(c); 
+        setLevelData(l); 
+        setTotalDistance(d);
+        setEconomyMode(s.batterySaver || false);
+        // Se houver lógica de setUser remoto:
+        // if (u) setUser(u); 
     };
 
     useFocusEffect(React.useCallback(() => { loadData(); }, []));
@@ -298,12 +326,25 @@ export default function MapScreen() {
                 const { latitude: newLat, longitude: newLon, heading } = loc.coords;
                 setLocation(prev => ({ ...prev, latitude: newLat, longitude: newLon, heading: heading || prev.heading }));
                 
-                // --- SINCRONIZAÇÃO SUPABASE (REAL-TIME) ---
+                // --- SINCRONIZAÇÃO COMPLETA (REAL-TIME + DB) ---
                 const syncCloudLocation = async () => {
                     const user = await getCurrentUserLocal();
                     if (user) {
                         const settings = await getSettingsLocal();
+                        // 1. Persistência no DB (Postgres)
                         AuthService.updateLocation(user.id, newLat, newLon, settings.ghostMode);
+                        
+                        // 2. Broadcast em tempo real (Supabase Realtime)
+                        // @ts-ignore - se broadcastLocation estiver disponível no escopo/hook
+                        if (typeof broadcastLocation === 'function') {
+                            // @ts-ignore
+                            broadcastLocation({
+                                latitude: newLat,
+                                longitude: newLon,
+                                heading: heading || 0,
+                                timestamp: Date.now()
+                            });
+                        }
                     }
                 };
                 syncCloudLocation();

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthService } from './services/AuthService';
 
 const USERS_KEY = '@wanderpet_users';
 const CURRENT_USER_KEY = '@wanderpet_current_user';
@@ -11,32 +12,15 @@ const THEME_KEY = '@wanderpet_theme';
 const DISTANCE_KEY = '@wanderpet_total_distance';
 const VISITS_KEY = '@wanderpet_visit_grid';
 const PATH_KEY = '@wanderpet_path_history';
-const FRIENDS_KEY = '@wanderpet_friends';
-const GROUPS_KEY = '@wanderpet_groups';
-const QUESTS_CLAIMED_KEY = '@wanderpet_quests_claimed';
+const SETTINGS_KEY = '@wanderpet_settings';
 const GEMS_KEY = '@wanderpet_gems';
 const SPENT_COINS_KEY = '@wanderpet_spent_coins';
 const SPENT_GEMS_KEY = '@wanderpet_spent_gems';
 const INVENTORY_KEY = '@wanderpet_inventory';
 const DAILY_DIST_PREFIX = '@wanderpet_dist_'; // + YYYY-MM-DD
 const DAILY_PATH_PREFIX = '@wanderpet_path_'; // + YYYY-MM-DD
-const CHAT_MESSAGES_KEY = '@wanderpet_chats';
-
-export interface ChatMessage {
-    id: string;
-    senderId: string;
-    receiverId: string; // Pode ser o ID do amigo ou o ID do Clã
-    text: string;
-    timestamp: number;
-}
-
-export interface LocalGroup {
-    id: string;
-    name: string;
-    founderId: string;
-    members: string[]; // Array de IDs de usuários
-    createdAt: number;
-}
+const QUESTS_CLAIMED_KEY = '@wanderpet_quests_claimed';
+const LIKES_KEY = '@wanderpet_likes';
 
 export type Species = 'bunny' | 'puppy' | 'cat' | 'sheep' | 'mouse' | 'snake' | 'fox' | 'parrot' | 'frog' | 'cockroach' | 'wolf' | 'raccoon' | 'bear';
 
@@ -47,6 +31,8 @@ export interface LocalUser {
     securityQuestion: string;
     securityAnswer: string;
     twoFactorPin: string;
+    resetToken?: string;
+    resetTokenExpiry?: number;
     wanderId: string;
     name?: string;
 }
@@ -105,6 +91,12 @@ export const getGemsLocal = async (): Promise<number> => {
 
 export const saveGemsLocal = async (amount: number): Promise<void> => {
     await AsyncStorage.setItem(GEMS_KEY, amount.toString());
+    
+    // Sync Cloud
+    const user = await getCurrentUserLocal();
+    if (user) {
+        AuthService.syncStats(user.id, { gems: amount });
+    }
 };
 
 // ─── INVENTÁRIO (COSMÉTICOS) ───
@@ -131,6 +123,12 @@ export const getCoinsLocal = async (): Promise<number> => {
 
 export const saveCoinsLocal = async (amount: number): Promise<void> => {
     await AsyncStorage.setItem(COINS_KEY, amount.toString());
+    
+    // Sync Cloud
+    const user = await getCurrentUserLocal();
+    if (user) {
+        AuthService.syncStats(user.id, { coins: amount });
+    }
 };
 
 export const addCoinsLocal = async (amount: number): Promise<number> => {
@@ -182,6 +180,13 @@ export const addXPLocal = async (amount: number): Promise<{ xp: number, level: n
     }
     await AsyncStorage.setItem(XP_KEY, xp.toString());
     await AsyncStorage.setItem(LEVEL_KEY, level.toString());
+
+    // Sync Cloud
+    const user = await getCurrentUserLocal();
+    if (user) {
+        AuthService.syncStats(user.id, { xp, level });
+    }
+
     return { xp, level, leveledUp };
 };
 
@@ -237,6 +242,31 @@ export const signInLocal = async (email: string, password?: string): Promise<Loc
         }
 
         return user;
+    } catch (error) {
+        throw error;
+    }
+};
+
+export const updateUserLocal = async (userId: string, updates: Partial<LocalUser>): Promise<LocalUser> => {
+    try {
+        const usersJson = await AsyncStorage.getItem(USERS_KEY);
+        let users: LocalUser[] = usersJson ? JSON.parse(usersJson) : [];
+        const idx = users.findIndex(u => u.id === userId);
+        if (idx === -1) throw new Error('Usuário não encontrado');
+        
+        users[idx] = { ...users[idx], ...updates };
+        await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
+        
+        // Se for o usuário atual, atualiza também a chave de sessão se ela existir
+        const currentUserJson = await AsyncStorage.getItem(CURRENT_USER_KEY);
+        if (currentUserJson) {
+            const currentUser = JSON.parse(currentUserJson);
+            if (currentUser.id === userId) {
+                await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(users[idx]));
+            }
+        }
+        
+        return users[idx];
     } catch (error) {
         throw error;
     }
@@ -306,6 +336,12 @@ export const updatePetAccessoryLocal = async (accessory: string): Promise<void> 
     if (current) {
         current.accessory = accessory;
         await savePetLocal(current);
+        
+        // Sync Cloud
+        const user = await getCurrentUserLocal();
+        if (user) {
+            AuthService.syncPet(user.id, current);
+        }
     }
 };
 
@@ -506,72 +542,6 @@ export const generateFakeHistoryLocal = async (): Promise<void> => {
     }
 };
 
-// ─── AMIZADES ───
-
-export const getFriendsLocal = async (): Promise<string[]> => {
-    try {
-        const friendsJson = await AsyncStorage.getItem(FRIENDS_KEY);
-        return friendsJson ? JSON.parse(friendsJson) : [];
-    } catch {
-        return [];
-    }
-};
-
-export const addFriendLocal = async (idOrEmailOrWanderId: string): Promise<LocalUser> => {
-    const allUsers = await getAllUsersLocal();
-    const query = idOrEmailOrWanderId.trim().toLowerCase();
-    
-    // Busca o usuário pelo WanderId, Email ou Nome
-    const found = allUsers.find(u => 
-        u.wanderId?.toLowerCase() === query || 
-        u.email.toLowerCase() === query ||
-        u.name?.toLowerCase() === query
-    );
-
-    if (!found) {
-        throw new Error('Nenhum explorador encontrado com essa identificação.');
-    }
-
-    const currentFriends = await getFriendsLocal();
-    if (currentFriends.includes(found.id)) {
-        throw new Error('Este explorador já está na sua lista de amigos!');
-    }
-
-    currentFriends.push(found.id);
-    await AsyncStorage.setItem(FRIENDS_KEY, JSON.stringify(currentFriends));
-    
-    return found;
-};
-
-// ─── GRUPOS ───
-
-export const getGroupsLocal = async (): Promise<LocalGroup[]> => {
-    try {
-        const groupsJson = await AsyncStorage.getItem(GROUPS_KEY);
-        return groupsJson ? JSON.parse(groupsJson) : [];
-    } catch {
-        return [];
-    }
-};
-
-export const createGroupLocal = async (name: string): Promise<LocalGroup> => {
-    const user = await getCurrentUserLocal();
-    if (!user) throw new Error('Você precisa estar logado para criar um grupo.');
-
-    const groups = await getGroupsLocal();
-    const newGroup: LocalGroup = {
-        id: 'group_' + Date.now(),
-        name,
-        founderId: user.id,
-        members: [user.id],
-        createdAt: Date.now()
-    };
-
-    groups.push(newGroup);
-    await AsyncStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
-    return newGroup;
-};
-
 // ─── QUESTS (MISSÕES) ───
 export const getClaimedQuestsLocal = async (): Promise<string[]> => {
     try {
@@ -587,57 +557,75 @@ export const claimQuestLocal = async (questId: string): Promise<void> => {
     if (!claimed.includes(questId)) {
         claimed.push(questId);
         await AsyncStorage.setItem(QUESTS_CLAIMED_KEY, JSON.stringify(claimed));
+        
+        // Sincronizar com a nuvem
+        const user = await getCurrentUserLocal();
+        if (user) {
+            AuthService.syncQuests(user.id, claimed);
+        }
     }
 };
 
-// ─── CHAT EFÊMERO ───
+// ─── FAVORITOS (LIKES) ───
 
-const CHAT_EXPIRATION_MS = 60 * 60 * 1000; // 1 Hora
-
-export const getChatMessagesLocal = async (userId: string, targetId: string): Promise<ChatMessage[]> => {
-    const chatsJson = await AsyncStorage.getItem(CHAT_MESSAGES_KEY);
-    const chats: ChatMessage[] = chatsJson ? JSON.parse(chatsJson) : [];
-    
-    const now = Date.now();
-    
-    // Filtramos apenas mensagens entre esses dois usuários E que não expiraram
-    return chats.filter(msg => {
-        const isParticipant = (msg.senderId === userId && msg.receiverId === targetId) ||
-                              (msg.senderId === targetId && msg.receiverId === userId);
-        const isNotExpired = (now - msg.timestamp) < CHAT_EXPIRATION_MS;
-        return isParticipant && isNotExpired;
-    });
+export const getLikesLocal = async (): Promise<string[]> => {
+    try {
+        const likesJson = await AsyncStorage.getItem(LIKES_KEY);
+        return likesJson ? JSON.parse(likesJson) : [];
+    } catch {
+        return [];
+    }
 };
 
-export const sendMessageLocal = async (senderId: string, receiverId: string, text: string): Promise<ChatMessage> => {
-    const chatsJson = await AsyncStorage.getItem(CHAT_MESSAGES_KEY);
-    let chats: ChatMessage[] = chatsJson ? JSON.parse(chatsJson) : [];
+export const toggleLikeLocal = async (memberId: string): Promise<string[]> => {
+    const currentLikes = await getLikesLocal();
+    let nextLikes: string[];
     
-    const newMessage: ChatMessage = {
-        id: 'msg_' + Date.now(),
-        senderId,
-        receiverId,
-        text,
-        timestamp: Date.now()
-    };
+    if (currentLikes.includes(memberId)) {
+        nextLikes = currentLikes.filter(id => id !== memberId);
+    } else {
+        nextLikes = [...currentLikes, memberId];
+    }
     
-    chats.push(newMessage);
-    
-    // Limpeza oportunista ao enviar mensagem
-    const now = Date.now();
-    chats = chats.filter(msg => (now - msg.timestamp) < CHAT_EXPIRATION_MS);
-    
-    await AsyncStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(chats));
-    return newMessage;
+    await AsyncStorage.setItem(LIKES_KEY, JSON.stringify(nextLikes));
+    return nextLikes;
 };
 
-export const clearExpiredChatsLocal = async (): Promise<void> => {
-    const chatsJson = await AsyncStorage.getItem(CHAT_MESSAGES_KEY);
-    if (!chatsJson) return;
-    
-    const chats: ChatMessage[] = JSON.parse(chatsJson);
-    const now = Date.now();
-    const activeChats = chats.filter(msg => (now - msg.timestamp) < CHAT_EXPIRATION_MS);
-    
-    await AsyncStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(activeChats));
+// ─── CONFIGURAÇÕES DO USUÁRIO ───
+export interface UserSettings {
+    ghostMode: boolean;
+    notifications: boolean;
+    batterySaver: boolean;
+    twoFactorEnabled: boolean;
+}
+
+const DEFAULT_SETTINGS: UserSettings = {
+    ghostMode: false,
+    notifications: true,
+    batterySaver: false,
+    twoFactorEnabled: false
+};
+
+export const getSettingsLocal = async (): Promise<UserSettings> => {
+    try {
+        const json = await AsyncStorage.getItem(SETTINGS_KEY);
+        if (json) {
+            return { ...DEFAULT_SETTINGS, ...JSON.parse(json) };
+        }
+        return DEFAULT_SETTINGS;
+    } catch {
+        return DEFAULT_SETTINGS;
+    }
+};
+
+export const saveSettingsLocal = async (settings: Partial<UserSettings>): Promise<UserSettings> => {
+    const current = await getSettingsLocal();
+    const updated = { ...current, ...settings };
+    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+    return updated;
+};
+
+export const getGhostModeLocal = async (): Promise<boolean> => {
+    const settings = await getSettingsLocal();
+    return settings.ghostMode;
 };

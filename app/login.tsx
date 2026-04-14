@@ -26,7 +26,8 @@ import Animated, {
     SharedValue,
     ZoomIn
 } from 'react-native-reanimated';
-import { signInLocal, signUpLocal, getPetLocal } from '../localDatabase';
+import { getPetLocal } from '../localDatabase';
+import { AuthService } from '../services/AuthService';
 import { TapSparkles } from '../components/TapSparkles';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -200,25 +201,27 @@ export default function LoginScreen() {
                 if (!securityAnswer || twoFactorPin.length < 4) {
                     throw new Error("Preencha a pergunta de segurança e defina um PIN de 4+ dígitos.");
                 }
-                await signUpLocal(email.trim(), password, securityQuestion, securityAnswer, twoFactorPin);
+                await AuthService.signUp(email.trim(), password, securityQuestion, securityAnswer, twoFactorPin);
                 petsCelebrate();
-                setShowSuccess(true);
-                setTimeout(() => {
-                    setShowSuccess(false);
-                    setIsRegistering(false);
-                    setEmail('');
-                    setPassword('');
-                    setSecurityAnswer('');
-                    setTwoFactorPin('');
-                }, 2200);
+                Alert.alert(
+                    "E-mail de Confirmação",
+                    "Enviamos um link de ativação para seu e-mail. Por favor, confirme-o para poder entrar na sua conta.",
+                    [{ text: "OK", onPress: () => {
+                        setIsRegistering(false);
+                        setEmail('');
+                        setPassword('');
+                        setSecurityAnswer('');
+                        setTwoFactorPin('');
+                    }}]
+                );
             } else {
-                const user = await signInLocal(email.trim(), password);
+                const authUser = await AuthService.signIn(email.trim(), password);
                 petsCelebrate();
                 
                 // Em vez de ir pro mapa, vai pra verificação de PIN (2FA)
                 router.push({
                     pathname: '/two-factor',
-                    params: { email: email.trim() }
+                    params: { uid: authUser.id, email: email.trim() }
                 });
             }
         } catch (error: any) {

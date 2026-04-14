@@ -46,6 +46,7 @@ export default function TabLayout() {
         options={{
           title: 'Comunidade',
           href: null,
+          tabBarStyle: { display: 'none' },
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? [styles.activeTab, { backgroundColor: colors.primary }] : undefined}>
               <Ionicons name="people" size={focused ? 18 : 22} color={focused ? '#FFF' : color} />

@@ -11,7 +11,8 @@ import {
     StatusBar,
 } from 'react-native';
 import Animated, { FadeIn, ZoomIn, useSharedValue, useAnimatedStyle, withSequence, withTiming } from 'react-native-reanimated';
-import { signInLocal, finalizeLoginLocal, getPetLocal, getAllUsersLocal } from '../localDatabase';
+import { finalizeLoginLocal, getPetLocal } from '../localDatabase';
+import { AuthService } from '../services/AuthService';
 import { TapSparkles } from '../components/TapSparkles';
 
 const C = {
@@ -29,7 +30,7 @@ const C = {
 export default function TwoFactorScreen() {
     const { height } = useWindowDimensions();
     const router = useRouter();
-    const { email } = useLocalSearchParams<{ email: string }>();
+    const { uid, email } = useLocalSearchParams<{ uid: string, email: string }>();
     const [pin, setPin] = useState('');
     const [sparksActive, setSparksActive] = useState(false);
     const shakeX = useSharedValue(0);
@@ -54,12 +55,47 @@ export default function TwoFactorScreen() {
         }
 
         try {
-            // Buscamos o usuário no "banco" para conferir o PIN
-            const users = await getAllUsersLocal();
-            const user = users.find((u: any) => u.email === email);
+            // Buscamos o perfil do usuário no SUPABASE real
+            const userProfile = await AuthService.getUserProfile(uid);
 
-            if (user && user.twoFactorPin === pin) {
-                await finalizeLoginLocal(user);
+            if (userProfile && userProfile.twoFactorPin === pin) {
+                // Sincronizar dados da nuvem para o local antes de entrar
+                try {
+                    const fullData = await AuthService.fetchFullUserData(uid);
+                    if (fullData) {
+                        // Salvar perfil local
+                        await finalizeLoginLocal(userProfile as any);
+                        
+                        // Sincronizar Moedas/XP/Missões se existirem na nuvem
+                        if (fullData.profile) {
+                            const { coins, gems, xp, level, claimed_quests } = fullData.profile;
+                            await AsyncStorage.multiSet([
+                                ['@wanderpet_coins', (coins || 150).toString()],
+                                ['@wanderpet_gems', (gems || 150).toString()],
+                                ['@wanderpet_xp', (xp || 0).toString()],
+                                ['@wanderpet_level', (level || 1).toString()],
+                                ['@wanderpet_quests_claimed', JSON.stringify(claimed_quests || [])]
+                            ]);
+                        }
+                        
+                        // Sincronizar Pet
+                        if (fullData.pet) {
+                            await AsyncStorage.setItem('@wanderpet_pet', JSON.stringify({
+                                name: fullData.pet.name,
+                                species: fullData.pet.species,
+                                accessory: fullData.pet.accessory,
+                                personality: fullData.pet.personality,
+                                customImageUri: fullData.pet.custom_image_url
+                            }));
+                        }
+                    } else {
+                        await finalizeLoginLocal(userProfile as any);
+                    }
+                } catch (err) {
+                    console.error("Erro ao sincronizar dados na entrada:", err);
+                    await finalizeLoginLocal(userProfile as any);
+                }
+
                 const pet = await getPetLocal();
                 if (!pet) {
                     router.replace('/(onboarding)/create-character');
@@ -71,7 +107,7 @@ export default function TwoFactorScreen() {
                 setPin('');
             }
         } catch (e) {
-            Alert.alert('Erro', 'Ocorreu um problema na verificação.');
+            Alert.alert('Erro', 'Ocorreu um problema na verificação real do PIN.');
         }
     };
 

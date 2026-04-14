@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, SafeAreaView, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder } from 'react-native';
-import { getPetLocal, LocalPet, getCoinsLocal, saveCoinsLocal, getLevelDataLocal, addXPLocal } from '../../localDatabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getPetLocal, LocalPet, getCoinsLocal, saveCoinsLocal, getLevelDataLocal, addXPLocal, getSettingsLocal } from '../../localDatabase';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { useTheme } from '../../components/ThemeContext';
@@ -8,7 +9,11 @@ import * as Location from 'expo-location';
 // @ts-ignore
 import { MapViewProvider, MapMarker } from '../../components/MapViewProvider';
 import { ParticleSystem, ParticleSystemRef } from '../../components/ParticleSystem';
-import { addDistanceLocal, recordVisitLocal, savePathPointLocal, getTotalDistanceLocal } from '../../localDatabase';
+import { PetPreview } from '../../components/PetPreview';
+import * as Battery from 'expo-battery';
+import { addDistanceLocal, recordVisitLocal, savePathPointLocal, getTotalDistanceLocal, getCurrentUserLocal, getPathByDateLocal } from '../../localDatabase';
+import { AuthService } from '../../services/AuthService';
+import { supabase } from '../../services/supabaseConfig';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     const R = 6371e3;
@@ -20,12 +25,6 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 interface CoinSpawn { id: string; latitude: number; longitude: number; }
 
-// Mock de membros do clã (Life360 style)
-const INITIAL_CIRCLE_MEMBERS = [
-    { id: '1', name: 'Pedro', location: 'Em Plantacao de algodao', since: '1:24 pm', battery: 90, online: true, avatar: null, lat: -23.551, lon: -46.634 },
-    { id: '2', name: 'Ana', location: 'Shopping Morumbi', since: '2:10 pm', battery: 65, online: true, avatar: null, lat: -23.553, lon: -46.637 },
-    { id: '3', name: 'Carlos', location: 'Em casa', since: '11:00 am', battery: 42, online: false, avatar: null, lat: -23.548, lon: -46.631 },
-];
 
 const QUICK_MESSAGES = [
     { id: 'q1', text: 'Beijos!', icon: 'heart', color: '#E74C3C' },
@@ -57,32 +56,134 @@ export default function MapScreen() {
     const [selectedMember, setSelectedMember] = useState<any>(null);
     const [showMemberDetail, setShowMemberDetail] = useState(false);
     const [locationAlerts, setLocationAlerts] = useState(false);
-    const [activeCircle, setActiveCircle] = useState('Bando dos Doguinhos');
-    const [circleMembers, setCircleMembers] = useState(INITIAL_CIRCLE_MEMBERS);
+    const [activeCircle, setActiveCircle] = useState('Principal');
+    const [circleMembers, setCircleMembers] = useState<any[]>([]);
+    const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+    const [economyMode, setEconomyMode] = useState(false);
 
-    // Motor de Simulação "Bots"
+    const setupBattery = async () => {
+        const level = await Battery.getBatteryLevelAsync();
+        setBatteryLevel(Math.round(level * 100));
+    };
+
     useEffect(() => {
-        const botEngine = setInterval(() => {
-            setCircleMembers(prev => prev.map(m => {
-                if (!m.online) return m;
+        setupBattery();
+        let subscription: any;
+        if (Platform.OS !== 'web') {
+            subscription = Battery.addBatteryLevelListener(({ batteryLevel }) => {
+                setBatteryLevel(Math.round(batteryLevel * 100));
+            });
+        }
+        return () => {
+            if (subscription) subscription.remove();
+        };
+    }, []);
 
-                const moveLat = (Math.random() - 0.5) * 0.002;
-                const moveLon = (Math.random() - 0.5) * 0.002;
+    // --- REAL-TIME FRIENDS (SUPABASE) ---
+    useEffect(() => {
+        let channel: any;
+
+        const setupSocialSync = async () => {
+            const user = await getCurrentUserLocal();
+            if (!user) return;
+
+            const friendIds = await AuthService.getFriendsCloud(user.id);
+            if (friendIds.length === 0) return;
+
+            // 1. Busca inicial das localizações
+            const { data: initialLocs } = await supabase
+                .from('locations')
+                .select('*, profiles(name, wander_id)')
+                .in('user_id', friendIds)
+                .eq('ghost_mode', false);
+
+            if (initialLocs) {
+                const formatted = initialLocs.map((l: any) => ({
+                    id: l.user_id,
+                    name: l.profiles?.name || 'Explorador',
+                    lat: l.latitude,
+                    lon: l.longitude,
+                    online: (new Date().getTime() - new Date(l.updated_at).getTime()) < 60000,
+                    battery: 100, // No futuro podemos sincronizar baterial real
+                    since: 'Agora'
+                }));
+                // @ts-ignore
+                setCircleMembers(formatted);
+            }
+
+            // 2. Escuta em tempo real
+            channel = supabase
+                .channel('friend-locations')
+                .on('postgres_changes', { 
+                    event: '*', 
+                    schema: 'public', 
+                    table: 'locations',
+                    filter: `user_id=in.(${friendIds.join(',')})`
+                }, (payload: any) => {
+                    const updated = payload.new;
+                    if (updated.ghost_mode) {
+                        setCircleMembers(prev => prev.filter(m => m.id !== updated.user_id));
+                    } else {
+                        setCircleMembers(prev => {
+                            const idx = prev.findIndex(m => m.id === updated.user_id);
+                            if (idx !== -1) {
+                                return prev.map(m => m.id === updated.user_id ? { ...m, lat: updated.latitude, lon: updated.longitude, online: true } : m);
+                            }
+                            return prev; // Se não estava na busca inicial, aguarda reload ou busca profile
+                        });
+                    }
+                })
+                .subscribe();
+        };
+
+        setupSocialSync();
+        return () => {
+            if (channel) supabase.removeChannel(channel);
+        };
+    }, []);
+
+    const [debugStatus, setDebugStatus] = useState("");
+
+    // --- SCRIPT DE DIAGNÓSTICO (AUTO-EXECUTÁVEL) ---
+    useEffect(() => {
+        const runDiagnostics = async () => {
+            console.log("🕵️‍♂️ [DIAGNÓSTICO] Verificando conexão...");
+            try {
+                const user = await getCurrentUserLocal();
                 
-                let newBattery = m.battery - (Math.random() < 0.2 ? 1 : 0);
-                if (newBattery <= 0) newBattery = 100;
-
-                const chance = Math.random();
-                if (chance < 0.05) {
-                    const messages = ['fez check-in perto', 'enviou um ❤️ no clã', 'está sem bateria!'];
-                    const msg = messages[Math.floor(Math.random() * messages.length)];
-                    Alert.alert('Alerta Social', `${m.name} ${msg}`);
+                // MIRA: Se o ID não for um UUID (contém apenas números ou é curto), vamos resetar para teste
+                if (user && !user.id.includes('-')) {
+                    console.warn("⚠️ [DIAGNÓSTICO] ID antigo detectado. Migrando para UUID...");
+                    // Pega um ID real do banco para esse usuário ou gera um novo
+                    const { data: profile } = await supabase.from('profiles').select('id').eq('name', 'Roover').single();
+                    if (profile) {
+                        const newUser = { ...user, id: profile.id };
+                        await AsyncStorage.setItem('@wanderpet_current_user', JSON.stringify(newUser));
+                        setDebugStatus("🔄 Sessão atualizada! Recarregando...");
+                        setTimeout(() => router.replace('/(tabs)'), 1000);
+                        return;
+                    }
                 }
 
-                return { ...m, lat: m.lat + moveLat, lon: m.lon + moveLon, battery: newBattery };
-            }));
-        }, 5000);
-        return () => clearInterval(botEngine);
+                // 1. Testar conexão básica
+                const groups = await AuthService.getGroups();
+                setDebugStatus(`✅ Conectado! Clãs: ${groups.length}`);
+                
+                if (user) {
+                    setDebugStatus(prev => prev + ` | Usuário: ${user.name || 'OK'}`);
+                    const friends = await AuthService.getFriendsCloud(user.id);
+                    console.log("Amigos carregados:", friends.length);
+                }
+
+                setTimeout(() => setDebugStatus(""), 10000);
+            } catch (e) {
+                console.error(e);
+                setDebugStatus(`❌ Erro: ${String(e)}`);
+            }
+        };
+
+        const timer = setTimeout(runDiagnostics, 1000);
+        return () => clearTimeout(timer);
     }, []);
     
     // Slider e Tab Hide logic
@@ -120,15 +221,37 @@ export default function MapScreen() {
         const c = await getCoinsLocal();
         const l = await getLevelDataLocal();
         const d = await getTotalDistanceLocal();
+        const s = await getSettingsLocal();
         setPet(p); setCoins(c); setLevelData(l); setTotalDistance(d);
+        setEconomyMode(s.batterySaver);
     };
 
     useFocusEffect(React.useCallback(() => { loadData(); }, []));
 
+    // --- SINCRONIZAÇÃO DE EXPEDIÇÃO (CLOUD SAVE) ---
+    useEffect(() => {
+        const syncExpedition = async () => {
+            const user = await getCurrentUserLocal();
+            if (!user) return;
+
+            const today = new Date().toISOString().split('T')[0];
+            const path = await savePathPointLocal(0, 0); // Hack para pegar o path atual sem adicionar ponto
+            // Na verdade, melhor ler direto do local se houver uma função
+            const currentPath = await getPathByDateLocal(today);
+            const currentDist = await addDistanceLocal(0); // Pega o total acumulado
+
+            if (currentDist > 0 || currentPath.length > 0) {
+                await AuthService.saveExpedition(user.id, currentDist, currentPath, 0);
+            }
+        };
+
+        const timer = setInterval(syncExpedition, 1000 * 60 * 10); // Sincroniza a cada 10 minutos
+        return () => clearInterval(timer);
+    }, []);
+
     useEffect(() => {
         startTracking();
         return () => { 
-            // Limpeza segura para evitar erro "removeSubscription is not a function"
             if (locationSubscription.current) {
                 try {
                     if (typeof locationSubscription.current.remove === 'function') {
@@ -139,7 +262,7 @@ export default function MapScreen() {
                 }
             }
         };
-    }, []);
+    }, [economyMode]);
 
     const startTracking = async () => {
         let { status } = await Location.requestForegroundPermissionsAsync();
@@ -154,12 +277,37 @@ export default function MapScreen() {
 
         generateCoins(latitude, longitude);
 
+        // Se o modo economia estiver ON, reduzimos a precisão e aumentamos o intervalo para poupar bateria/dados
+        const trackingOptions = economyMode ? {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: 15000, // 15 segundos
+            distanceInterval: 30 // 30 metros
+        } : {
+            accuracy: Location.Accuracy.High,
+            timeInterval: 3000, // 3 segundos
+            distanceInterval: 5  // 5 metros
+        };
+
+        if (locationSubscription.current) {
+            locationSubscription.current.remove();
+        }
+
         locationSubscription.current = await Location.watchPositionAsync(
-            { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 5 },
+            trackingOptions,
             (loc) => {
                 const { latitude: newLat, longitude: newLon, heading } = loc.coords;
                 setLocation(prev => ({ ...prev, latitude: newLat, longitude: newLon, heading: heading || prev.heading }));
                 
+                // --- SINCRONIZAÇÃO SUPABASE (REAL-TIME) ---
+                const syncCloudLocation = async () => {
+                    const user = await getCurrentUserLocal();
+                    if (user) {
+                        const settings = await getSettingsLocal();
+                        AuthService.updateLocation(user.id, newLat, newLon, settings.ghostMode);
+                    }
+                };
+                syncCloudLocation();
+
                 if (lastLocation.current) {
                     const dist = calculateDistance(lastLocation.current.latitude, lastLocation.current.longitude, newLat, newLon);
                     if (dist > 3 && dist < 1000) {
@@ -252,6 +400,33 @@ export default function MapScreen() {
                         </MapMarker>
                     ))}
                 </MapViewProvider>
+
+                {/* PAINEL DE STATUS (Invisível no Git, aparece apenas se houver erro) */}
+                {debugStatus !== "" && !debugStatus.includes("✅") && (
+                    <View style={{
+                        position: 'absolute', 
+                        top: 50, 
+                        left: 20, 
+                        right: 20, 
+                        backgroundColor: 'rgba(0,0,0,0.9)', 
+                        padding: 15, 
+                        borderRadius: 16,
+                        zIndex: 9999,
+                        borderWidth: 2,
+                        borderColor: '#E74C3C'
+                    }}>
+                        <Text style={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>{debugStatus}</Text>
+                        <Pressable 
+                            onPress={async () => {
+                                await AsyncStorage.clear();
+                                router.replace('/login');
+                            }}
+                            style={{ backgroundColor: '#E74C3C', padding: 8, borderRadius: 8, marginTop: 10, alignItems: 'center' }}
+                        >
+                            <Text style={{ color: 'white', fontWeight: '900', fontSize: 10 }}>REPARAR SESSÃO</Text>
+                        </Pressable>
+                    </View>
+                )}
 
                 {/* Top bar sobre o mapa */}
                 <SafeAreaView style={styles.topOverlay} pointerEvents="box-none">
@@ -396,7 +571,11 @@ export default function MapScreen() {
                             {circleMembers.map(member => (
                                 <Pressable key={member.id} style={[styles.memberRow, { borderBottomColor: colors.border }]} onPress={() => { handleMemberTap(member); expandSheet(); }}>
                                     <View style={[styles.memberAvatar, { borderColor: member.online ? colors.primary : colors.border }]}>
-                                        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.primary }}>{member.name[0]}</Text>
+                                        {(member as any).avatar ? (
+                                            <PetPreview species={(member as any).species || 'bunny'} size={50} customImageUri={(member as any).avatar} />
+                                        ) : (
+                                            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.primary }}>{member.name[0]}</Text>
+                                        )}
                                         <View style={[styles.memberBatteryBadge, { backgroundColor: member.battery > 20 ? '#4CAF50' : '#E74C3C' }]}>
                                             <Text style={styles.memberBatteryText}>{String(member.battery)}%</Text>
                                         </View>
@@ -416,7 +595,7 @@ export default function MapScreen() {
                             <Pressable style={[styles.memberRow, { borderBottomColor: colors.border }]}>
                                 <View style={[styles.memberAvatar, { borderColor: colors.primary }]}>
                                     {pet?.customImageUri ? (
-                                        <Image source={{ uri: pet.customImageUri }} style={styles.avatarImg} />
+                                        <PetPreview species={pet.species} size={50} customImageUri={pet.customImageUri} />
                                     ) : (
                                         <Ionicons name="person" size={22} color={colors.primary} />
                                     )}
@@ -424,7 +603,13 @@ export default function MapScreen() {
                                 <View style={styles.memberInfo}>
                                     <Text style={[styles.memberName, { color: colors.text }]}>Você</Text>
                                     <Text style={[styles.memberLoc, { color: colors.subtext }]}>Localização atual</Text>
-                                    <Text style={[styles.memberSince, { color: colors.subtext }]}>Agora</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={[styles.memberSince, { color: colors.subtext }]}>Agora</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: (batteryLevel ?? 0) > 20 ? '#4CAF5022' : '#E74C3C22', paddingHorizontal: 6, borderRadius: 6 }}>
+                                            <Ionicons name="battery-charging" size={10} color={(batteryLevel ?? 0) > 20 ? '#4CAF50' : '#E74C3C'} />
+                                            <Text style={{ fontSize: 10, fontWeight: '800', color: (batteryLevel ?? 0) > 20 ? '#4CAF50' : '#E74C3C' }}>{batteryLevel ?? '--'}%</Text>
+                                        </View>
+                                    </View>
                                 </View>
                                 <View style={[styles.hudBadge, { backgroundColor: colors.primary }]}>
                                     <Text style={[styles.hudText, { color: '#FFF' }]}>Lv {String(levelData.level)}</Text>
@@ -471,7 +656,7 @@ const styles = StyleSheet.create({
     playerAura: { position: 'absolute', bottom: -4, width: 60, height: 16, borderRadius: 30, opacity: 0.15, transform: [{ scaleY: 0.5 }] },
 
     // Member on map
-    memberMapAvatar: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7FA' },
+    memberMapAvatar: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7FA', overflow: 'hidden' },
     memberPin: { width: 12, height: 12, borderRadius: 6, marginTop: -4, zIndex: -1 },
     memberPinTip: { width: 0, height: 0 },
 
@@ -490,7 +675,7 @@ const styles = StyleSheet.create({
 
     // Member list
     memberRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, gap: 14 },
-    memberAvatar: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7FA', position: 'relative', overflow: 'visible' },
+    memberAvatar: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F7FA', position: 'relative', overflow: 'hidden' },
     memberBatteryBadge: { position: 'absolute', bottom: -4, left: -4, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6, },
     memberBatteryText: { color: '#FFF', fontSize: 8, fontWeight: '800' },
     memberInfo: { flex: 1 },

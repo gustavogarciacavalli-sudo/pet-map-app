@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, SafeAreaView, Alert } from 'react-native';
 import { FontAwesome5, MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { getCoinsLocal, saveCoinsLocal, addXPLocal, getLevelDataLocal, getTotalDistanceLocal, getFriendsLocal, getGroupsLocal, getClaimedQuestsLocal, claimQuestLocal, getWeeklyActivityLocal, getPetLocal, getSpentCoinsLocal } from '../../localDatabase';
+import { getCoinsLocal, saveCoinsLocal, addXPLocal, getLevelDataLocal, getTotalDistanceLocal, getClaimedQuestsLocal, claimQuestLocal, getWeeklyActivityLocal, getPetLocal, getSpentCoinsLocal, getCurrentUserLocal } from '../../localDatabase';
+import { AuthService } from '../../services/AuthService';
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '../../components/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -37,8 +38,9 @@ export default function QuestsScreen() {
         const coins = await getCoinsLocal();
         const lvl = await getLevelDataLocal();
         const distTotal = await getTotalDistanceLocal();
-        const friends = await getFriendsLocal();
-        const groups = await getGroupsLocal();
+        const user = await getCurrentUserLocal();
+        const friends = user ? await AuthService.getFriendsCloud(user.id) : [];
+        const cloudGroups = await AuthService.getGroups();
         const claimed = await getClaimedQuestsLocal();
         const weeklyRaw = await getWeeklyActivityLocal();
         const pet = await getPetLocal();
@@ -49,7 +51,10 @@ export default function QuestsScreen() {
         const distWeekly = weeklyRaw.reduce((sum, d) => sum + d.distance, 0);
         
         const spentCoins = await getSpentCoinsLocal();
-        const maxMems = groups.reduce((acc, g) => Math.max(acc, g.members.length), 0);
+        const maxMems = cloudGroups.reduce((acc: number, g: any) => {
+            const memCount = (g.group_members?.length || 0);
+            return Math.max(acc, memCount);
+        }, 0);
 
         setStats({
             coins,
@@ -58,7 +63,7 @@ export default function QuestsScreen() {
             distDaily,
             distWeekly,
             friendsCount: friends.length,
-            groupCount: groups.length,
+            groupCount: cloudGroups.length,
             hasPhoto: !!pet?.customImageUri,
             spentCoins,
             maxGroupMembers: maxMems,

@@ -1,71 +1,95 @@
-# WanderPet 🐾 - Seu Ecossistema de Aventuras
+# WanderPet 🐾 - Social Pet Adventure
 
-Bem-vindo ao **WanderPet**, um rastreador de expedições gamificado onde cada passo que você dá fortalece o seu pet e te conecta a uma comunidade de exploradores!
+WanderPet é um aplicativo de aventura social onde você explora o mundo real com seu pet, descobre outros exploradores e se une a clãs!
 
-O projeto é construído com **React Native + Expo**, focado em performance e uma experiência visual vibrante (Dark/Light Mode).
-
----
-
-## 🚀 Como Começar (Para novos Exploradores/Devs)
-
-Se você caiu de paraquedas no projeto, siga estes passos para rodar o app localmente:
-
-1. **Clonar e Instalar**:
-   ```bash
-   git clone https://github.com/gustavogarciacavalli-sudo/pet-map-app.git
-   cd pet-map-app
-   npm install
-   ```
-
-2. **Iniciar o Motor**:
-   ```bash
-   npx expo start
-   ```
-   *Escaneie o QR Code com o app **Expo Go** no seu celular para ver a mágica acontecer.*
+## 🚀 Status do Projeto
+O sistema foi recentemente migrado para o **Supabase** (Backend-as-a-Service), garantindo persistência na nuvem e recursos em tempo real.
 
 ---
 
-## 🎮 Mecânicas Atuais (O que já temos)
+## 🏗️ Configuração do Banco de Dados (Supabase)
 
-### 🗺️ Diário de Expedição
-- **Rastreamento em Tempo Real**: Captura sua localização e calcula distância percorrida.
-- **Histórico Diário**: A Database separa trajetos em "baldes diários" (`YYYY-MM-DD`).
-- **Interactive Replay**: No Perfil, clique nas barras do gráfico semanal para abrir o mapa e ver o rastro exato (Polyline) de onde você andou naquele dia.
+Para o pleno funcionamento das abas Sociais, Clãs e Mensagens, execute o seguinte esquema SQL no seu Editor SQL do Supabase:
 
-### 🛡️ Sistema de Clãs (Social)
-- **Fundação de Grupos**: Crie seu próprio clã e chame seus amigos.
-- **Gestão Local**: Persistência via `AsyncStorage` com suporte a múltiplos membros.
+```sql
+-- 1. Tabela de Perfis (Extensão de Auth.Users)
+CREATE TABLE public.profiles (
+  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
+  name TEXT,
+  email TEXT,
+  wander_id TEXT UNIQUE,
+  avatar TEXT,
+  species TEXT DEFAULT 'bunny',
+  coins INTEGER DEFAULT 0,
+  level INTEGER DEFAULT 1,
+  xp INTEGER DEFAULT 0,
+  claimed_quests TEXT[] DEFAULT '{}'::TEXT[]
+);
 
-### 🧙 Perfil Gamificado
-- **Customização**: Troca de avatares (Pets) e suporte a fotos externas (PNG).
-- **Progressão**: Ganho de moedas (PetCoins) e XP baseado na distância percorrida.
-- **Wander-ID**: Sistema de identificação única para adicionar amigos.
+-- 2. Sistema de Clãs (Grupos)
+CREATE TABLE public.groups (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  password TEXT,
+  is_public BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+CREATE TABLE public.group_members (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  group_id UUID REFERENCES public.groups ON DELETE CASCADE,
+  user_id UUID REFERENCES public.profiles ON DELETE CASCADE,
+  UNIQUE(group_id, user_id)
+);
+
+-- 3. Sistema Social (Amizades e Mensagens)
+CREATE TABLE public.friendships (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id1 UUID REFERENCES public.profiles ON DELETE CASCADE,
+  user_id2 UUID REFERENCES public.profiles ON DELETE CASCADE,
+  status TEXT DEFAULT 'pending', -- 'pending' ou 'accepted'
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+CREATE TABLE public.messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  sender_id UUID REFERENCES public.profiles ON DELETE CASCADE,
+  recipient_id UUID REFERENCES public.profiles (Opcional se for grupo),
+  group_id UUID REFERENCES public.groups ON DELETE CASCADE (Opcional se for DM),
+  text TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+
+CREATE TABLE public.social_likes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES public.profiles ON DELETE CASCADE,
+  target_id UUID REFERENCES public.profiles ON DELETE CASCADE,
+  UNIQUE(user_id, target_id)
+);
+```
 
 ---
 
-## 🛠️ Tech Stack
-- **Framework**: [Expo](https://expo.dev/) (SDK 54+)
-- **Nativo**: React Native + Reanimated (Animações 60fps)
-- **Maps**: React Native Maps (Google Maps / OSM)
-- **Store**: AsyncStorage (Persistência Local leve)
+## 📋 Lista de Tarefas (TODO)
+
+Abaixo estão os pontos identificados para as próximas iterações:
+
+- [ ] **Visuais**: Verificar renderização inconsistente das imagens de alguns bots em dispositivos específicos.
+- [ ] **Clãs**: Melhorar a atualização automática da lista "Meus Clãs" sem necessidade de reload manual.
+- [ ] **Mensagens**: Implementar sistema de notificações (Push) para novas mensagens.
+- [ ] **Like**: Adicionar efeito visual de 'Coração' ao curtir alguém na tela principal.
+- [ ] **Performance**: Corrigir erro intermitente de `Uncaught error` ao navegar rapidamente pela aba Recomendados.
+- [ ] **UX**: Refinar o layout do Card de Perfil para evitar cortes em telas pequenas.
 
 ---
 
-## 🧭 Mural de Missões (O que vem por aí!)
+## 🛠️ Tecnologias
+- **Frontend**: React Native / Expo
+- **Linguagem**: TypeScript
+- **Backend**: Supabase (PostgreSQL + Realtime)
+- **Design**: Vanilla CSS-in-JS (Premium Aesthetics)
 
-Aqui estão as próximas tarefas para quem quiser contribuir:
-
-- [ ] **Chat de Clã**: Sistema básico de mensagens rápidas entre membros do grupo.
-- [ ] **Loja de Itens**: Comprar acessórios (chapéu, capas) usando PetCoins.
-- [ ] **Missões Diárias**: Desafios como "Caminhe 2km hoje" para bônus de XP.
-- [ ] **Notificações**: Alertas sobre conquistas de amigos e convites de clãs.
-- [ ] **Exportação de Rota**: Salvar o trajeto do dia como uma imagem para compartilhar.
-
----
-
-## 🧪 Notas de Dev (Modo de Teste)
-Vá em **Perfil > Configurações** e use o botão **"🧪 DEV: Gerar Memórias Fake"** para popular o gráfico e testar o sistema de mapas sem precisar sair de casa.
-
----
-
-*Desenvolvido com ❤️ pela equipe WanderPet.*
+## 👩‍💻 Como Rodar
+1. `npm install`
+2. Configure as variáveis do Supabase no `services/supabaseConfig.ts`
+3. `npm run dev` ou `npx expo start`

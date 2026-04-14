@@ -35,16 +35,6 @@ export function PetPreview({ species, accessory, name, size = 150, customImageUr
   }));
 
   const handlePress = () => {
-    // Efeito "Boing" (esmaga e pula)
-    scaleY.value = withSequence(
-      withSpring(0.8, { damping: 2, stiffness: 150 }), // Esmaga
-      withSpring(1, { damping: 10, stiffness: 100 })  // Volta ao normal
-    );
-    scaleX.value = withSequence(
-      withSpring(1.2, { damping: 2, stiffness: 150 }), // Alarga
-      withSpring(1, { damping: 10, stiffness: 100 })  // Volta ao normal
-    );
-    
     if (onPress) onPress();
   };
 
@@ -56,17 +46,17 @@ export function PetPreview({ species, accessory, name, size = 150, customImageUr
 
   return (
     <Pressable onPress={handlePress}>
-      <Animated.View style={[styles.container, { width: size, height: size }, animatedStyle]}>
+      <Animated.View style={[styles.container, { width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }, animatedStyle]}>
         {customImageUri ? (
           <Image 
-            source={{ uri: customImageUri }} 
-            style={[styles.petImage, { borderRadius: size / 2, overflow: 'hidden' }]} 
+            source={typeof customImageUri === 'string' ? { uri: customImageUri } : customImageUri} 
+            style={[styles.petImage, { borderRadius: size / 2 }]} 
             resizeMode="cover"
           />
         ) : (
           <Image 
             source={getPetImage()} 
-            style={styles.petImage} 
+            style={[styles.petImage, { borderRadius: size / 2 }]} 
             resizeMode="contain"
           />
         )}

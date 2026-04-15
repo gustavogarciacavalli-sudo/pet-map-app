@@ -232,6 +232,50 @@ export default function LoginScreen() {
         }
     };
 
+    const handleDevLogin = async () => {
+        setLoading(true);
+        try {
+            // Cria ou recupera o usuário de teste
+            let user;
+            try {
+                user = await signInLocal('dev@wanderpet.com', 'dev123');
+            } catch (e) {
+                user = await signUpLocal('dev@wanderpet.com', 'dev123', 'Dev?', 'Yes', '1234');
+            }
+            
+            await AsyncStorage.setItem('@wanderpet_current_user', JSON.stringify(user));
+            
+            // Verifica se o pet existe, se não cria um padrão
+            const pet = await getPetLocal();
+            if (!pet) {
+                const defaultPet: any = { name: 'DevBunny', species: 'bunny', accessory: 'none', personality: 'Happy' };
+                await AsyncStorage.setItem('@wanderpet_pet', JSON.stringify(defaultPet));
+            }
+
+            petsCelebrate();
+            router.replace('/(tabs)');
+        } catch (error: any) {
+            Alert.alert('Erro Dev', error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSeedBots = async () => {
+        setLoading(true);
+        try {
+            const result = await AuthService.seedMockBots();
+            if (result.success) {
+                Alert.alert('Sucesso!', 'Os bots (Luna, Rex, etc) foram criados no Supabase.');
+            } else {
+                Alert.alert('Erro no Seeding', result.message || 'Não foi possível criar os bots.');
+            }
+        } catch (e: any) {
+            Alert.alert('Falha', e.message || 'Erro ao realizar seeding.');
+        } finally {
+            setLoading(false);
+        }
+    };
     const decoRects: DecoRect[] = [
         { top: 50, left: -12, color: C.mint }, { top: 90, left: -12, color: C.lavender }, { top: 130, left: -12, color: C.peach },
         { top: 50, right: -12, color: C.pink }, { top: 90, right: -12, color: C.yellow }, { top: 130, right: -12, color: C.mint },
@@ -327,6 +371,20 @@ export default function LoginScreen() {
                                     <Text style={styles.mainBtnText}>{loading ? '...' : isRegistering ? 'Criar conta' : 'Entrar'}</Text>
                                 </Pressable>
                             </Animated.View>
+
+                            <Pressable 
+                                onPress={handleDevLogin}
+                                style={[styles.devBtn, { backgroundColor: C.wood, marginTop: 15 }]}
+                            >
+                                <Text style={[styles.mainBtnText, { color: '#FFF' }]}>Acesso Dev Rapidão 🚀</Text>
+                            </Pressable>
+
+                            <Pressable 
+                                onPress={handleSeedBots}
+                                style={[styles.devBtn, { backgroundColor: C.mint, marginTop: 10 }]}
+                            >
+                                <Text style={[styles.mainBtnText, { color: '#FFF' }]}>Povoar Bots (Supabase) 🤖</Text>
+                            </Pressable>
 
                             <Pressable 
                                 onPress={async () => {

@@ -26,20 +26,29 @@ interface Explorer {
     xp?: number;
 }
 
+interface Link {
+    from: string;
+    to: string;
+}
+
 interface NearbyWebProps {
     explorers: Explorer[];
+    links?: Link[];
     onSelectExplorer: (explorer: Explorer) => void;
     userAvatar?: string;
     userColor: string;
+    userId: string;
 }
 
 const AnimatedLine = Animated.createAnimatedComponent(Line);
 
 export const NearbyWeb: React.FC<NearbyWebProps> = ({ 
     explorers, 
+    links = [],
     onSelectExplorer, 
     userAvatar,
-    userColor 
+    userColor,
+    userId
 }) => {
     const pulse = useSharedValue(0);
 
@@ -52,17 +61,25 @@ export const NearbyWeb: React.FC<NearbyWebProps> = ({
     }, []);
 
     // Gera posições orbitais fixas para os exploradores
-    const explorerPositions = useMemo(() => {
-        return explorers.map((_, index) => {
+    const positionsMap = useMemo(() => {
+        const map = new Map<string, { x: number, y: number, delay: number }>();
+        
+        // Centro (Usuário logado)
+        map.set(userId, { x: CENTER, y: CENTER, delay: 0 });
+
+        explorers.forEach((ex, index) => {
             const angle = (index / explorers.length) * 2 * Math.PI;
             const radius = (WEB_SIZE / 2) * 0.7; // 70% do raio total
-            return {
+            map.set(ex.id, {
                 x: CENTER + radius * Math.cos(angle),
                 y: CENTER + radius * Math.sin(angle),
-                delay: index * 200
-            };
+                delay: (index + 1) * 200
+            });
         });
-    }, [explorers]);
+        return map;
+    }, [explorers, userId]);
+
+    const explorerPositions = explorers.map(ex => positionsMap.get(ex.id)!);
 
     return (
         <View style={styles.container}>
@@ -70,18 +87,43 @@ export const NearbyWeb: React.FC<NearbyWebProps> = ({
                 
                 {/* SVG para as linhas da teia */}
                 <Svg width={WEB_SIZE} height={WEB_SIZE} style={StyleSheet.absoluteFill}>
-                    {explorerPositions.map((pos, i) => (
-                        <WebLine 
-                            key={`line-${i}`} 
-                            startX={CENTER} 
-                            startY={CENTER} 
-                            endX={pos.x} 
-                            endY={pos.y} 
-                            pulse={pulse}
-                            delay={pos.delay}
-                            color={userColor}
-                        />
-                    ))}
+                    {/* Linhas do Centro para todos (Padrão) */}
+                    {explorers.map((ex, i) => {
+                        const pos = positionsMap.get(ex.id)!;
+                        return (
+                            <WebLine 
+                                key={`center-line-${ex.id}`} 
+                                startX={CENTER} 
+                                startY={CENTER} 
+                                endX={pos.x} 
+                                endY={pos.y} 
+                                pulse={pulse}
+                                delay={pos.delay}
+                                color={userColor}
+                            />
+                        );
+                    })}
+
+                    {/* Linhas de Recomendação (A Teia Social) */}
+                    {links.map((link, i) => {
+                        const start = positionsMap.get(link.from);
+                        const end = positionsMap.get(link.to);
+                        if (!start || !end) return null;
+
+                        return (
+                            <WebLine 
+                                key={`link-line-${i}`} 
+                                startX={start.x} 
+                                startY={start.y} 
+                                endX={end.x} 
+                                endY={end.y} 
+                                pulse={pulse}
+                                delay={0}
+                                color={userColor}
+                                isSecondary
+                            />
+                        );
+                    })}
                 </Svg>
 
                 {/* Exploradores (Nós Orbitais) */}
@@ -89,7 +131,7 @@ export const NearbyWeb: React.FC<NearbyWebProps> = ({
                     <ExplorerNode 
                         key={explorer.id}
                         explorer={explorer}
-                        pos={explorerPositions[i]}
+                        pos={positionsMap.get(explorer.id)!}
                         onPress={() => onSelectExplorer(explorer)}
                     />
                 ))}
@@ -107,17 +149,17 @@ export const NearbyWeb: React.FC<NearbyWebProps> = ({
             
             <View style={styles.footer}>
                 <Ionicons name="pulse" size={16} color={userColor} />
-                <Text style={styles.footerText}>Buscando conexões de alma por perto...</Text>
+                <Text style={styles.footerText}>Visualizando a teia social de confiança...</Text>
             </View>
         </View>
     );
 };
 
 // Componente secundário para a Linha Animada
-const WebLine = ({ startX, startY, endX, endY, pulse, delay, color }: any) => {
+const WebLine = ({ startX, startY, endX, endY, pulse, delay, color, isSecondary }: any) => {
     const animatedProps = useAnimatedStyle(() => ({
-        opacity: interpolate(pulse.value, [0, 1], [0.1, 0.4]),
-        strokeWidth: interpolate(pulse.value, [0, 1], [1, 2]),
+        opacity: interpolate(pulse.value, [0, 1], isSecondary ? [0.05, 0.2] : [0.1, 0.4]),
+        strokeWidth: interpolate(pulse.value, [0, 1], isSecondary ? [1, 1.5] : [1, 2]),
     }));
 
     return (
@@ -127,6 +169,7 @@ const WebLine = ({ startX, startY, endX, endY, pulse, delay, color }: any) => {
             x2={endX} 
             y2={endY} 
             stroke={color}
+            strokeDasharray={isSecondary ? "4 4" : undefined}
             animatedProps={animatedProps as any}
         />
     );

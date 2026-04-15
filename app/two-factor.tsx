@@ -10,6 +10,7 @@ import {
     Vibration,
     StatusBar,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeIn, ZoomIn, useSharedValue, useAnimatedStyle, withSequence, withTiming } from 'react-native-reanimated';
 import { finalizeLoginLocal, getPetLocal } from '../localDatabase';
 import { AuthService } from '../services/AuthService';

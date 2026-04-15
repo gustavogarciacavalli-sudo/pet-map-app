@@ -588,13 +588,12 @@ export const AuthService = {
             })
             .subscribe();
     },
-
+    
     /**
      * LIKES SOCIAIS
      */
     toggleLikeCloud: async (userId: string, targetId: string) => {
         try {
-            // Verifica se já existe
             const { data: existing } = await supabase
                 .from('social_likes')
                 .select('*')
@@ -604,10 +603,10 @@ export const AuthService = {
 
             if (existing) {
                 await supabase.from('social_likes').delete().eq('id', existing.id);
-                return false; // Unliked
+                return false;
             } else {
                 await supabase.from('social_likes').insert([{ user_id: userId, target_id: targetId }]);
-                return true; // Liked
+                return true;
             }
         } catch (error) {
             console.error("Erro ao alternar like:", error);
@@ -626,6 +625,102 @@ export const AuthService = {
         } catch (error) {
             console.error("Erro ao buscar likes:", error);
             return [];
+        }
+    },
+
+    /**
+     * RECOMENDAÇÕES (Sistema de Conexões)
+     */
+    recommendUser: async (recommenderId: string, recommendedId: string) => {
+        if (!isValidUUID(recommenderId) || !isValidUUID(recommendedId)) return false;
+        try {
+            const { error } = await supabase
+                .from('recommendations')
+                .upsert([{ 
+                    recommender_id: recommenderId, 
+                    recommended_id: recommendedId 
+                }], { onConflict: 'recommender_id,recommended_id' });
+            
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error("Erro ao recomendar usuário:", error);
+            return false;
+        }
+    },
+
+    getRecommendationWeb: async (userId: string) => {
+        if (!isValidUUID(userId)) return { explorers: [], links: [] };
+        try {
+            // 1. Busca exploradores próximos (reutilizando a lógica existente de exclusão de amigos)
+            const explorers = await AuthService.getNearbyExplorers(userId);
+            const explorerIds = [...explorers.map(e => e.id), userId];
+
+            // 2. Busca TODAS as recomendações que envolvem esses exploradores
+            const { data: recommendations, error } = await supabase
+                .from('recommendations')
+                .select('recommender_id, recommended_id')
+                .in('recommender_id', explorerIds)
+                .in('recommended_id', explorerIds);
+            
+            if (error) throw error;
+
+            const links = recommendations.map(r => ({
+                from: r.recommender_id,
+                to: r.recommended_id
+            }));
+
+            return { explorers, links };
+        } catch (error) {
+            console.error("Erro ao buscar teia de recomendações:", error);
+            return { explorers: [], links: [] };
+        }
+    },
+
+    /**
+     * SEEDING / DEV TOOLS
+     */
+    seedMockBots: async () => {
+        const BOTS = [
+            { name: 'Luna Bunny', species: 'bunny', level: 12 },
+            { name: 'Rex Dog', species: 'dog', level: 8 },
+            { name: 'Miau Cat', species: 'cat', level: 15 },
+            { name: 'Oliver Fox', species: 'fox', level: 5 },
+            { name: 'Bella Hamster', species: 'hamster', level: 3 },
+            { name: 'Cooper Bear', species: 'bear', level: 20 },
+        ];
+
+        try {
+            // @ts-ignore - Verificação de URL em tempo de execução
+            console.log("🚀 Iniciando seeding. URL alvo:", supabase.supabaseUrl);
+            
+            for (const bot of BOTS) {
+                const id = '00000000-0000-0000-0000-' + Math.random().toString(16).substring(2, 14).padStart(12, '0');
+                const wander_id = `#WP-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+                
+                // Inserir Perfil
+                const { error } = await supabase.from('profiles').insert([
+                    {
+                        id,
+                        name: bot.name,
+                        wander_id,
+                        email: `${bot.name.toLowerCase().replace(' ', '.')}@bot.wanderpet`,
+                        level: bot.level,
+                        coins: 100,
+                        gems: 10,
+                        security_question: 'Qual o seu pet favorito?',
+                        security_answer: bot.species
+                    }
+                ]);
+
+                if (error) {
+                    throw new Error(`Falha ao inserir ${bot.name}: ${error.message} (${error.code})`);
+                }
+            }
+            return { success: true };
+        } catch (error: any) {
+            console.error("Erro no seeding:", error);
+            return { success: false, message: error.message || "Erro desconhecido" };
         }
     },
 

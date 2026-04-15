@@ -1,7 +1,7 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, SafeAreaView, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { PetPreview } from '../../components/PetPreview';
@@ -23,7 +23,8 @@ import { NearbyWeb } from '../../components/NearbyWeb';
 export default function SocialScreen() {
     const { colors, isDarkMode } = useTheme();
     const router = useRouter();
-    const [activeTopTab, setActiveTopTab] = useState<'perfil' | 'social' | 'clas'>('social');
+    const { tab } = useLocalSearchParams<{ tab?: string }>();
+    const [activeTopTab, setActiveTopTab] = useState<'perfil' | 'social' | 'clas'>(tab === 'perfil' ? 'perfil' : 'social');
     const [activeSocialSubTab, setActiveSocialSubTab] = useState<'amigos' | 'recomendados' | 'inbox'>('amigos');
     const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar'>('meus');
 
@@ -46,6 +47,7 @@ export default function SocialScreen() {
     const [socialSearch, setSocialSearch] = useState('');
     const [nearbyExplorers, setNearbyExplorers] = useState<any[]>([]);
     const [isLoadingNearby, setIsLoadingNearby] = useState(false);
+    const [recommendationLinks, setRecommendationLinks] = useState<any[]>([]);
     const [clansSearch, setClansSearch] = useState('');
 
     // Estados para Chat
@@ -102,7 +104,7 @@ export default function SocialScreen() {
             }));
             // @ts-ignore
             setCircles(formattedCircles);
-
+            if (!user) return;
             // 3. Solicitações Pendentes (Inbox)
             const cloudRequests = await AuthService.getPendingRequestsCloud(user.id);
             const formattedRequests = cloudRequests.map((r: any) => ({
@@ -204,6 +206,25 @@ export default function SocialScreen() {
             loadSocialData();
         } catch (e) {
             Alert.alert('Erro', 'Não foi possível responder à solicitação.');
+        }
+    };
+
+    const handleRecommend = async (targetId: string) => {
+        const loggedUser = await getCurrentUserLocal();
+        if (!loggedUser) return;
+        try {
+            const success = await AuthService.recommendUser(loggedUser.id, targetId);
+            if (success) {
+                Alert.alert("Recomendado!", "Você adicionou um elo de confiança nesta teia.");
+                // Recarrega a teia para mostrar a nova linha
+                if (activeSocialSubTab === 'recomendados') {
+                    const { explorers, links } = await AuthService.getRecommendationWeb(loggedUser.id);
+                    setNearbyExplorers(explorers);
+                    setRecommendationLinks(links);
+                }
+            }
+        } catch (error) {
+            console.error("Erro ao recomendar:", error);
         }
     };
 
@@ -349,7 +370,6 @@ export default function SocialScreen() {
         }
     };
 
-    // Carrega exploradores próximos para a "Teia"
     useEffect(() => {
         if (activeSocialSubTab === 'recomendados' && activeTopTab === 'social') {
             const loadNearby = async () => {
@@ -357,8 +377,9 @@ export default function SocialScreen() {
                 try {
                     const user = await getCurrentUserLocal();
                     if (user) {
-                        const results = await AuthService.getNearbyExplorers(user.id);
-                        setNearbyExplorers(results);
+                        const { explorers, links } = await AuthService.getRecommendationWeb(user.id);
+                        setNearbyExplorers(explorers);
+                        setRecommendationLinks(links);
                     }
                 } catch (e) {
                     console.error(e);
@@ -523,31 +544,58 @@ export default function SocialScreen() {
                                     })}
                             </View>
                         ) : activeSocialSubTab === 'recomendados' ? (
-                            <View style={{ flex: 1, backgroundColor: colors.background }}>
+                            <View style={styles.membersSection}>
                                 {isLoadingNearby ? (
-                                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                                        <Text style={{ color: colors.subtext }}>Lançando a teia...</Text>
+                                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 40 }}>
+                                        <Text style={{ color: colors.subtext }}>Buscando conexões...</Text>
                                     </View>
                                 ) : nearbyExplorers.length > 0 ? (
-                                    <NearbyWeb 
-                                        explorers={nearbyExplorers} 
-                                        userAvatar={pet?.customImageUri || undefined}
-                                        userColor={colors.primary}
-                                        onSelectExplorer={(ex) => {
-                                            setActivePreviewMember({
-                                                id: ex.id,
-                                                name: ex.name,
-                                                avatar: ex.avatar,
-                                                species: ex.species || 'bunny',
-                                                location: ex.location || 'Explorador próximo',
-                                                level: ex.level || 5,
-                                                xp: ex.xp || 120,
-                                                online: true,
-                                                since: 'agora'
-                                            });
-                                            setIsMemberCardVisible(true);
-                                        }}
-                                    />
+                                    nearbyExplorers.map(member => {
+                                        if (!member) return null;
+                                        const isLiked = likedIds.includes(member.id);
+                                        return (
+                                            <View key={member.id} style={[styles.memberItem, { borderColor: colors.border }]}>
+                                                <Pressable
+                                                    onPress={() => {
+                                                        setActivePreviewMember(member);
+                                                        setIsAvatarZoomVisible(true);
+                                                    }}
+                                                    style={[styles.memberAvatar, { backgroundColor: colors.accent }]}
+                                                >
+                                                    {member?.species ? (
+                                                        <PetPreview species={member.species} size={50} customImageUri={member.avatar} />
+                                                    ) : (
+                                                        <Ionicons name="person" size={24} color={colors.primary} />
+                                                    )}
+                                                </Pressable>
+                                                <Pressable
+                                                    onPress={() => {
+                                                        setActivePreviewMember({
+                                                            ...member,
+                                                            species: member.species || 'bunny',
+                                                            location: 'Explorador recomendado',
+                                                            level: 5,
+                                                            xp: 120,
+                                                            online: true,
+                                                            since: 'agora'
+                                                        });
+                                                        setIsMemberCardVisible(true);
+                                                    }}
+                                                    style={styles.memberInfo}
+                                                >
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <Text style={[styles.memberName, { color: colors.text }]}>{member?.name}</Text>
+                                                        {isLiked && <Ionicons name="heart" size={14} color="#E74C3C" />}
+                                                    </View>
+                                                    <Text style={[styles.memberLoc, { color: colors.subtext }]}>{member?.location || 'Explorador Próximo'}</Text>
+                                                    <Text style={[styles.memberSince, { color: colors.subtext }]}>Wander-ID: {member?.wander_id}</Text>
+                                                </Pressable>
+                                                <Pressable onPress={() => handleOpenChat(member.id, member.name, member.avatar)}>
+                                                    <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.subtext} />
+                                                </Pressable>
+                                            </View>
+                                        );
+                                    })
                                 ) : (
                                     <View style={[styles.membersSection, { justifyContent: 'center', alignItems: 'center', padding: 40 }]}>
                                         <Text style={{ fontSize: 40, marginBottom: 20 }}>🔭</Text>
@@ -956,6 +1004,15 @@ export default function SocialScreen() {
                                     <Ionicons name="chatbubble-outline" size={20} color="#FFF" />
                                     <Text style={{ color: '#FFF', fontWeight: '800', marginLeft: 8 }}>Chat</Text>
                                 </Pressable>
+                                {activeSocialSubTab === 'recomendados' && (
+                                    <Pressable
+                                        onPress={() => handleRecommend(activePreviewMember.id)}
+                                        style={[styles.cardBtn, { backgroundColor: colors.accent, flex: 2 }]}
+                                    >
+                                        <Ionicons name="share-social" size={20} color={colors.primary} />
+                                        <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 8 }}>Recomendar</Text>
+                                    </Pressable>
+                                )}
                                 <Pressable
                                     onPress={() => handleToggleLike(activePreviewMember.id)}
                                     style={[styles.cardBtn, { backgroundColor: likedIds.includes(activePreviewMember?.id) ? colors.primary + '22' : colors.accent, flex: 1 }]}

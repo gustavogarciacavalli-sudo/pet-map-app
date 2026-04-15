@@ -12,6 +12,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
+          display: 'none',
           backgroundColor: colors.tabBg,
           borderTopColor: colors.border,
           borderTopWidth: 1,
@@ -37,19 +38,6 @@ export default function TabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? [styles.activeTab, { backgroundColor: colors.primary }] : undefined}>
               <Ionicons name="location" size={focused ? 18 : 22} color={focused ? '#FFF' : color} />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="friends"
-        options={{
-          title: 'Comunidade',
-          href: null,
-          tabBarStyle: { display: 'none' },
-          tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? [styles.activeTab, { backgroundColor: colors.primary }] : undefined}>
-              <Ionicons name="people" size={focused ? 18 : 22} color={focused ? '#FFF' : color} />
             </View>
           ),
         }}

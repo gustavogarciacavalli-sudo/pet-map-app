@@ -5,6 +5,8 @@ import 'react-native-reanimated';
 import { getCurrentUserLocal } from '../localDatabase';
 import { ThemeProvider } from '../components/ThemeContext';
 
+import { SupabaseRealtimeProvider } from '../components/SupabaseRealtimeProvider';
+
 export const unstable_settings = {
   initialRouteName: 'index',
 };
@@ -55,12 +57,16 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-      <StatusBar style="auto" />
+      <SupabaseRealtimeProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="social" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="pet-home" options={{ animation: 'slide_from_right' }} />
+        </Stack>
+        <StatusBar style="auto" />
+      </SupabaseRealtimeProvider>
     </ThemeProvider>
   );
 }

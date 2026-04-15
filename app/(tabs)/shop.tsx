@@ -68,10 +68,15 @@ export default function ShopScreen() {
     const [gems, setGems] = useState(0);
     const [inventory, setInventory] = useState<string[]>([]);
     const [activeTab, setActiveTab] = useState<ShopTab>('accessory');
+    const [dailyDealId, setDailyDealId] = useState<string | null>(null);
 
     useFocusEffect(
         React.useCallback(() => {
             loadBalances();
+            // Seleciona oferta do dia (aleatória de moedas)
+            const coinItems = CATALOG.filter(i => i.currency === 'coins' && i.tab !== 'gem_store');
+            const randomItem = coinItems[Math.floor(Math.random() * coinItems.length)];
+            setDailyDealId(randomItem.id);
         }, [])
     );
 
@@ -100,33 +105,36 @@ export default function ShopScreen() {
         }
 
         const isGem = item.currency === 'gems';
+        const isDeal = item.id === dailyDealId;
+        const price = isDeal ? Math.floor(item.price / 2) : item.price;
         const balance = isGem ? gems : coins;
         
-        if (balance < item.price) {
+        if (balance < price) {
             Alert.alert('Saldo insuficiente', `Você precisa de mais ${isGem ? 'gemas' : 'moedas'} para este item.`);
             return;
         }
 
         Alert.alert(
             'Confirmar compra',
-            `Pagar ${item.price} ${isGem ? 'gemas' : 'moedas'} por ${item.name}?`,
+            `Pagar ${price} ${isGem ? 'gemas' : 'moedas'} por ${item.name}? ${isDeal ? '(OFERTA DO DIA!)' : ''}`,
             [
                 { text: 'Voltar', style: 'cancel' },
-                { text: 'Comprar', onPress: () => processPurchase(item, isGem) }
+                { text: 'Comprar', onPress: () => processPurchase(item, isGem, isDeal) }
             ]
         );
     };
 
-    const processPurchase = async (item: any, isGem: boolean) => {
+    const processPurchase = async (item: any, isGem: boolean, isDeal: boolean) => {
+        const price = isDeal ? Math.floor(item.price / 2) : item.price;
         if (isGem) {
-            const newGems = gems - item.price;
+            const newGems = gems - price;
             await saveGemsLocal(newGems);
-            await addSpentGemsLocal(item.price);
+            await addSpentGemsLocal(price);
             setGems(newGems);
         } else {
-            const newCoins = coins - item.price;
+            const newCoins = coins - price;
             await saveCoinsLocal(newCoins);
-            await addSpentCoinsLocal(item.price);
+            await addSpentCoinsLocal(price);
             setCoins(newCoins);
         }
 
@@ -240,7 +248,14 @@ export default function ShopScreen() {
                                     ) : (
                                         <>
                                             <Ionicons name={item.currency === 'gems' ? 'diamond' : 'wallet'} size={12} color={item.currency === 'gems' ? '#7AABE0' : colors.accent} />
-                                            <Text style={[styles.priceText, { color: colors.text }]}>{String(item.price)}</Text>
+                                            <Text style={[styles.priceText, { color: item.id === dailyDealId ? '#FF8C42' : colors.text }]}>
+                                                {item.id === dailyDealId ? String(Math.floor(item.price/2)) : String(item.price)}
+                                            </Text>
+                                            {item.id === dailyDealId && (
+                                                <View style={{ backgroundColor: '#FF8C42', paddingHorizontal: 4, borderRadius: 4, marginLeft: 4 }}>
+                                                    <Text style={{ color: '#FFF', fontSize: 8, fontWeight: '900' }}>-50%</Text>
+                                                </View>
+                                            )}
                                         </>
                                     )}
                                 </View>

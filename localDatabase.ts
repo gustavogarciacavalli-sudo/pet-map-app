@@ -21,6 +21,8 @@ const DAILY_DIST_PREFIX = '@wanderpet_dist_'; // + YYYY-MM-DD
 const DAILY_PATH_PREFIX = '@wanderpet_path_'; // + YYYY-MM-DD
 const QUESTS_CLAIMED_KEY = '@wanderpet_quests_claimed';
 const LIKES_KEY = '@wanderpet_likes';
+const HAPPINESS_KEY = '@wanderpet_happiness';
+const HAPPINESS_LAST_UPDATE_KEY = '@wanderpet_happiness_last_update';
 const RADAR_COOLDOWN_KEY = '@wanderpet_radar_cooldown';
 
 export type Species = 'bunny' | 'puppy' | 'cat' | 'sheep' | 'mouse' | 'snake' | 'fox' | 'parrot' | 'frog' | 'cockroach' | 'wolf' | 'raccoon' | 'bear';
@@ -658,6 +660,65 @@ export const saveSettingsLocal = async (settings: Partial<UserSettings>): Promis
 export const getGhostModeLocal = async (): Promise<boolean> => {
     const settings = await getSettingsLocal();
     return settings.ghostMode;
+};
+
+// ─── FELICIDADE (TAMAGOTCHI) ───
+export const getHappinessLocal = async (): Promise<number> => {
+    try {
+        const happinessStr = await AsyncStorage.getItem(HAPPINESS_KEY);
+        const lastUpdateStr = await AsyncStorage.getItem(HAPPINESS_LAST_UPDATE_KEY);
+        
+        let happiness = happinessStr ? parseInt(happinessStr, 10) : 100;
+        const lastUpdate = lastUpdateStr ? parseInt(lastUpdateStr, 10) : Date.now();
+        
+        // Decaimento por tempo: 5% por hora
+        const hoursPassed = (Date.now() - lastUpdate) / (1000 * 60 * 60);
+        const decay = Math.floor(hoursPassed * 5);
+        
+        if (decay > 0) {
+            happiness = Math.max(0, happiness - decay);
+        }
+        
+        return happiness;
+    } catch {
+        return 100;
+    }
+};
+
+export const addHappinessLocal = async (amount: number): Promise<number> => {
+    const current = await getHappinessLocal();
+    const next = Math.min(100, current + amount);
+    await AsyncStorage.setItem(HAPPINESS_KEY, next.toString());
+    await AsyncStorage.setItem(HAPPINESS_LAST_UPDATE_KEY, Date.now().toString());
+    return next;
+};
+
+/** Lógica de consumo de itens (Mochila) */
+export const consumeItemLocal = async (itemId: string): Promise<{ success: boolean, bonus?: string }> => {
+    const inv = await getInventoryLocal();
+    const idx = inv.indexOf(itemId);
+    
+    if (idx === -1) return { success: false };
+
+    // Remove o item do inventário
+    inv.splice(idx, 1);
+    await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inv));
+
+    // Aplica bônus específicos baseados no ID do item
+    let bonus = "";
+    if (itemId === 'apple') {
+        const current = await getEnergyLocal();
+        await saveEnergyLocal(current + 20);
+        bonus = "+20 de Energia 🍏";
+    } else if (itemId === 'xp_potion_small' || itemId === 'potion') {
+        await addXPLocal(50);
+        bonus = "+50 de XP 🧪";
+    } else if (itemId === 'meat' || itemId === 'golden_meat') {
+        await addHappinessLocal(20);
+        bonus = "+20 de Felicidade 🍖";
+    }
+
+    return { success: true, bonus };
 };
 
 // ─── RADAR ───

@@ -94,4 +94,20 @@ CREATE TABLE public.locations (
 3. `npx expo start -c` (O flag `-c` limpa o cache e garante a estabilidade)
 
 ---
+
+## 📋 Lista de Tarefas (Roadmap de Verificação)
+
+- [ ] Verificar se foto de perfil continua no banco de dados
+- [ ] Verificar integridade do Wander-ID
+- [ ] Verificar rastreamento de local atual (GPS Throttling)
+- [ ] Verificar banco de dados: Expedição da Semana
+- [ ] Verificar permanência de moedas e EXP (Cloud Sync)
+- [ ] Verificar evolução de medalhas e permanência de missões
+- [x] Arrumar imagem do Modo Fantasma (Ícone 3D Premium)
+- [ ] Verificar sistema de alterar senha e 2FA
+- [ ] Implementar/Colocar bots para testar amigos
+- [ ] Implementar Teia Wander (Social Graph)
+- [ ] Implementar Inbox (Sistema de Mensagens Diretas)
+
+---
 *Desenvolvido com ❤️ pela equipe WanderPet. Estabilidade em primeiro lugar.*

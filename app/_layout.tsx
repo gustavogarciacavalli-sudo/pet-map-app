@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { SupabaseRealtimeProvider } from '../components/SupabaseRealtimeProvider';
 import { ToastProvider } from '../components/ToastProvider';
+import { NotificationService } from '../services/NotificationService';
 import * as NavigationBar from 'expo-navigation-bar';
 
 export const unstable_settings = {
@@ -60,6 +61,25 @@ export default function RootLayout() {
 
     syncAndNavigate();
   }, [user, segments, initializing]);
+
+  useEffect(() => {
+    // Inicializa listeners de notificação
+    const cleanup = NotificationService.setupListeners(
+      (notif) => {
+        // Opcional: Mostrar Toast customizado ou som quando em foreground
+        console.log('Foreground Notif:', notif.request.content.title);
+      },
+      (response) => {
+        // Lógica de Redirecionamento (Deep Linking) ao clicar na notificação
+        const { data } = response.notification.request.content;
+        if (data?.screen) {
+          router.push(data.screen as any);
+        }
+      }
+    );
+
+    return () => cleanup();
+  }, []);
 
   if (initializing) return null;
 

@@ -60,7 +60,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 export function ProfileView() {
 
     const router = useRouter();
-    const { colors, theme, toggleTheme, isDarkMode } = useTheme();
+    const { colors, theme, toggleTheme, isDarkMode, setBatterySaverGlobal } = useTheme();
     const { showToast } = useToast();
     
     const [pet, setPet] = useState<LocalPet | null>(null);
@@ -247,6 +247,7 @@ export function ProfileView() {
 
         // Lógica para Economia de Bateria
         if (key === 'batterySaver') {
+            setBatterySaverGlobal(value); // Sincroniza estado global (animações e GPS)
             if (value) {
                 showToast({ 
                     message: "Economia de Bateria Ativada! GPS Throttled & 30 FPS.", 
@@ -255,7 +256,7 @@ export function ProfileView() {
                 });
             } else {
                 showToast({ 
-                    message: "Modo Performance Ativado! 60 FPS Habilitado.", 
+                    message: "Modo Performance Ativado! Desempenho Máximo Liberado.", 
                     type: 'info', 
                     icon: 'flash' 
                 });

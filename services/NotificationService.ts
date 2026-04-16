@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform, Alert } from 'react-native';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 
 // Configuração básica do comportamento das notificações enquanto o app está aberto
 Notifications.setNotificationHandler({
@@ -8,6 +9,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -63,5 +66,52 @@ export const NotificationService = {
         } catch (error) {
             return false;
         }
+    },
+
+    /**
+     * Obtém o token do dispositivo para notificações push
+     */
+    getPushTokenAsync: async () => {
+        try {
+            if (!Device.isDevice) return null;
+
+            // No SDK 53/54, o Expo Go não suporta mais notificações push no Android.
+            // É necessário um 'Development Build' para testar.
+            if (Constants.appOwnership === 'expo' && Platform.OS === 'android') {
+                console.warn('Push Notifications não são suportadas no Expo Go (Android) no SDK 54. Use um Development Build.');
+                return null;
+            }
+
+            const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+            if (!projectId) {
+                console.warn('Project ID não encontrado em app.json/Constants.');
+            }
+
+            const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+            return token;
+        } catch (e) {
+            console.error('Erro ao gerar push token:', e);
+            return null;
+        }
+    },
+
+    /**
+     * Configura ouvintes para notificações recebidas (foreground e background)
+     */
+    setupListeners: (onReceived?: (notif: Notifications.Notification) => void, onClicked?: (resp: Notifications.NotificationResponse) => void) => {
+        const receivedSub = Notifications.addNotificationReceivedListener((notification: Notifications.Notification) => {
+            console.log('Notificação Recebida:', notification);
+            if (onReceived) onReceived(notification);
+        });
+
+        const responseSub = Notifications.addNotificationResponseReceivedListener((response: Notifications.NotificationResponse) => {
+            console.log('Notificação Clicada:', response);
+            if (onClicked) onClicked(response);
+        });
+
+        return () => {
+            receivedSub.remove();
+            responseSub.remove();
+        };
     }
 };

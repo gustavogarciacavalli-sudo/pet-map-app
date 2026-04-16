@@ -13,6 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { finalizeLoginLocal, getPetLocal } from '../localDatabase';
 import { AuthService } from '../services/AuthService';
+import { NotificationService } from '../services/NotificationService';
 import { TapSparkles } from '../components/TapSparkles';
 
 const C = {
@@ -87,6 +88,19 @@ export default function TwoFactorScreen() {
                 } catch (err) {
                     console.error("Erro ao sincronizar dados na entrada:", err);
                     await finalizeLoginLocal(userProfile as any);
+                }
+
+                // Registro de Push Notification (Opcional, não trava o login se falhar)
+                try {
+                    const { granted } = await NotificationService.requestPermissions();
+                    if (granted) {
+                        const token = await NotificationService.getPushTokenAsync();
+                        if (token) {
+                            await AuthService.updatePushToken(uid, token);
+                        }
+                    }
+                } catch (pushErr) {
+                    console.warn("Erro ao registrar token de push no login:", pushErr);
                 }
 
                 const pet = await getPetLocal();

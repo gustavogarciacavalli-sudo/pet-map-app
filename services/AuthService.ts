@@ -116,6 +116,15 @@ export const AuthService = {
         }
     },
 
+    updatePushToken: async (uid: string, token: string) => {
+        if (!isValidUUID(uid) || !token) return;
+        try {
+            await supabase.from('profiles').update({ push_token: token }).eq('id', uid);
+        } catch (error) {
+            console.error("Erro ao salvar push token no Supabase:", error);
+        }
+    },
+
     syncStats: async (uid: string, stats: any) => {
         if (!isValidUUID(uid)) return;
         try {

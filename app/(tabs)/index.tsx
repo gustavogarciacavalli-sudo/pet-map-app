@@ -68,7 +68,7 @@ const PET_SPOTS: { id: string, name: string, type: SpotType, lat: number, lon: n
 ];
 
 export default function MapScreen() {
-    const { colors, isDarkMode } = useTheme();
+    const { colors, isDarkMode, batterySaver } = useTheme();
     const insets = useSafeAreaInsets();
     const particleRef = useRef<ParticleSystemRef>(null);
     const locationSubscription = useRef<Location.LocationSubscription | null>(null);
@@ -110,7 +110,6 @@ export default function MapScreen() {
     const [isNearSpot, setIsNearSpot] = useState(false);
     const [activeSpot, setActiveSpot] = useState<any>(null);
     const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
-    const [economyMode, setEconomyMode] = useState(false);
 
     // MECÂNICAS ATIVAS
     const [isSynced, setIsSynced] = useState(false);
@@ -335,7 +334,6 @@ export default function MapScreen() {
         setCoins(c); 
         setLevelData(l); 
         setTotalDistance(d);
-        setEconomyMode(s.batterySaver || false);
 
         // Buscar Clãs do Usuário
         if (u) {
@@ -362,7 +360,7 @@ export default function MapScreen() {
                 }
             }
         };
-    }, [economyMode]);
+    }, [batterySaver]);
 
     const startTracking = async () => {
         let { status } = await Location.requestForegroundPermissionsAsync();
@@ -373,7 +371,7 @@ export default function MapScreen() {
         setLocation(prev => ({ ...prev, latitude, longitude }));
         lastLocation.current = { latitude, longitude };
 
-        const trackingOptions = economyMode ? {
+        const trackingOptions = batterySaver ? {
             accuracy: Location.Accuracy.Balanced,
             timeInterval: 15000,
             distanceInterval: 30
@@ -515,7 +513,7 @@ export default function MapScreen() {
         if (particleRef.current) {
             const { width: W, height: H } = Dimensions.get('window');
             // Reduz contagem de partículas na economia
-            particleRef.current.burst(W / 2, H - 200, economyMode ? 'heart' : 'star');
+            particleRef.current.burst(W / 2, H - 200, batterySaver ? 'heart' : 'star');
         }
         Alert.alert("Farejo Ativo!", "Seu pet encontrou rastros de tesouros próximos! Verifique o mapa.");
     };
@@ -704,6 +702,14 @@ export default function MapScreen() {
                             <Ionicons name="wallet" size={14} color="#A78BFF" />
                             <Text style={[styles.hudText, { color: colors.text }]}>{coins}</Text>
                         </View>
+                        
+                        {batterySaver && (
+                            <View style={[styles.pillBadge, { backgroundColor: '#4CAF5022' }]}>
+                                <MaterialCommunityIcons name="leaf" size={14} color="#4CAF50" />
+                                <Text style={[styles.hudText, { color: '#4CAF50' }]}>ECO</Text>
+                            </View>
+                        )}
+
                         <View style={[styles.pillBadge, { backgroundColor: '#7C3AED22' }]}>
                             <Text style={{ color: '#7C3AED', fontWeight: '800' }}>Lv {levelData.level}</Text>
                         </View>

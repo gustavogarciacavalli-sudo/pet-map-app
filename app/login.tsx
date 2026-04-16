@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { getPetLocal, signInLocal, signUpLocal } from '../localDatabase';
 import { AuthService } from '../services/AuthService';
+import { NotificationService } from '../services/NotificationService';
 import { TapSparkles } from '../components/TapSparkles';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -191,6 +192,19 @@ export default function LoginScreen() {
             }
 
             router.replace('/(tabs)');
+
+            // Registro de Push Notification (Opcional, para testes em dispositivos reais)
+            try {
+                const { granted } = await NotificationService.requestPermissions();
+                if (granted) {
+                    const token = await NotificationService.getPushTokenAsync();
+                    if (token) {
+                        await AuthService.updatePushToken(user.id, token);
+                    }
+                }
+            } catch (pushErr) {
+                console.warn("Erro ao registrar token de push no logín dev:", pushErr);
+            }
         } catch (error: any) {
             Alert.alert('Erro Dev', error.message);
         } finally {

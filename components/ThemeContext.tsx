@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { Platform, LayoutAnimation, UIManager, View } from 'react-native';
-import { getThemeLocal, saveThemeLocal, getSettingsLocal } from '../localDatabase';
+import * as Battery from 'expo-battery';
+import { getThemeLocal, saveThemeLocal, getSettingsLocal, saveSettingsLocal } from '../localDatabase';
 
 // Ativa animações no Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -76,7 +77,9 @@ interface ThemeContextType {
     theme: ThemeType;
     colors: ThemeColors;
     isDarkMode: boolean;
+    batterySaver: boolean;
     toggleTheme: () => void;
+    setBatterySaverGlobal: (value: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -92,15 +95,38 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         async function loadData() {
             const savedTheme = await getThemeLocal();
             const settings = await getSettingsLocal();
+            
+            // Check current low power mode status
+            const isLowPower = await Battery.isLowPowerModeEnabledAsync();
+            
             if (isMounted) {
                 setTheme(savedTheme);
                 setCurrentColors(savedTheme === 'light' ? LightTheme : DarkTheme);
-                setBatterySaver(settings.batterySaver || false);
+                setBatterySaver(settings.batterySaver || isLowPower || false);
             }
         }
         loadData();
-        return () => { isMounted = false; };
+
+        // Listen for system low power mode changes
+        const subscription = Battery.addLowPowerModeListener(({ lowPowerMode }) => {
+            if (isMounted) {
+                setBatterySaver(prev => {
+                    if (lowPowerMode && !prev) return true; // Auto-enable if system enables it
+                    return prev;
+                });
+            }
+        });
+
+        return () => { 
+            isMounted = false; 
+            subscription.remove();
+        };
     }, []);
+
+    const setBatterySaverGlobal = async (value: boolean) => {
+        setBatterySaver(value);
+        await saveSettingsLocal({ batterySaver: value });
+    };
 
     const toggleTheme = async () => {
         // Recarrega o estado de bateria para garantir precisão
@@ -164,7 +190,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <ThemeContext.Provider value={{ theme, colors: currentColors, isDarkMode: theme === 'dark', toggleTheme }}>
+        <ThemeContext.Provider value={{ 
+            theme, 
+            colors: currentColors, 
+            isDarkMode: theme === 'dark', 
+            batterySaver,
+            toggleTheme,
+            setBatterySaverGlobal
+        }}>
             <View style={{ flex: 1, backgroundColor: currentColors.background }}>
                 {children}
             </View>

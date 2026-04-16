@@ -11,9 +11,14 @@
       "enabled": false
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.roover.wanderpet",
+      "infoPlist": {
+        "CADisableMinimumFrameDurationOnPhone": true
+      }
     },
     "android": {
+      "package": "com.roover.wanderpet",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -44,6 +49,13 @@
     "experiments": {
       "typedRoutes": true,
       "newArchEnabled": false
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b19b52ec-9af8-4e23-95d2-da979916b027"
+      }
+    },
+    "owner": "tavobatavokk"
   }
 }

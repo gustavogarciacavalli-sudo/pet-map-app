@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Alert, Switch, Modal, TextInput, Clipboard, LayoutAnimation, Platform, UIManager, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Alert, Switch, Modal, TextInput, Image, Clipboard, LayoutAnimation, Platform, UIManager, Animated, Easing } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { PetPreview } from './PetPreview';
 import { getPetLocal, LocalPet, getCurrentUserLocal, LocalUser, getCoinsLocal, getLevelDataLocal, logoutLocal, updatePetLocal, checkNameAvailabilityLocal, getTotalDistanceLocal, getWeeklyActivityLocal, getPathByDateLocal, generateFakeHistoryLocal, getClaimedQuestsLocal, getSettingsLocal, saveSettingsLocal, UserSettings, updateUserLocal } from '../localDatabase';
@@ -222,26 +222,51 @@ export function ProfileView() {
 
     const handleToggleSetting = async (key: keyof UserSettings, value: boolean) => {
         // Lógica especial para notificações
-        if (key === 'notifications' && value === true) {
-            try {
-                const { granted, status } = await NotificationService.requestPermissions();
-                if (!granted) {
-                    showToast({ 
-                        message: "Permissão de notificação negada.", 
-                        type: 'error', 
-                        icon: 'notifications-off' 
-                    });
-                    return; // Não ativa se não teve permissão
-                } else {
-                    showToast({ 
-                        message: status === 'emulator' ? "Modo Dev: Notificações Simuladas" : "Notificações ligadas!", 
-                        type: 'success', 
-                        icon: 'notifications' 
-                    });
+        if (key === 'notifications') {
+            if (value === true) {
+                try {
+                    const { granted, status } = await NotificationService.requestPermissions();
+                    if (!granted) {
+                        showToast({ 
+                            message: "Notificações Desativado! (Permissão negada)", 
+                            type: 'error', 
+                            icon: 'notifications-off' 
+                        });
+                        return; // Não ativa se não teve permissão
+                    } else {
+                        showToast({ 
+                            message: status === 'emulator' ? "Modo Dev: Notificações Simuladas" : "Notificações Ativado!", 
+                            type: 'success', 
+                            icon: 'notifications' 
+                        });
+                    }
+                } catch (error) {
+                    showToast({ message: "Erro ao configurar notificações", type: 'error' });
+                    return;
                 }
-            } catch (error) {
-                showToast({ message: "Erro ao configurar notificações", type: 'error' });
-                return;
+            } else {
+                showToast({ 
+                    message: "Notificações Desativado!", 
+                    type: 'info', 
+                    icon: 'notifications-off' 
+                });
+            }
+        }
+
+        // Lógica para Modo Fantasma
+        if (key === 'ghostMode') {
+            if (value) {
+                showToast({ 
+                    message: "Modo Fantasma Ativado!", 
+                    type: 'success', 
+                    icon: 'eye-off' 
+                });
+            } else {
+                showToast({ 
+                    message: "Modo Fantasma Desativado!", 
+                    type: 'info', 
+                    icon: 'eye' 
+                });
             }
         }
 
@@ -250,13 +275,13 @@ export function ProfileView() {
             setBatterySaverGlobal(value); // Sincroniza estado global (animações e GPS)
             if (value) {
                 showToast({ 
-                    message: "Economia de Bateria Ativada! GPS Throttled & 30 FPS.", 
+                    message: "Economia de Bateria Ativado!", 
                     type: 'success', 
-                    icon: 'battery-charging' 
+                    icon: 'battery-half' 
                 });
             } else {
                 showToast({ 
-                    message: "Modo Performance Ativado! Desempenho Máximo Liberado.", 
+                    message: "Economia de Bateria Desativado!", 
                     type: 'info', 
                     icon: 'flash' 
                 });
@@ -625,7 +650,7 @@ export function ProfileView() {
 
                         <View style={styles.optionItem}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                <FontAwesome5 name="ghost" size={16} color={userSettings.ghostMode ? colors.primary : '#9E9E9E'} style={{ width: 20, textAlign: 'center' }} />
+                                <Image source={require('../assets/images/ghost-icon.png')} style={{ width: 22, height: 22, opacity: userSettings.ghostMode ? 1 : 0.4 }} resizeMode="contain" />
                                 <View>
                                     <Text style={[styles.optionTitle, { color: colors.text }]}>Modo Fantasma</Text>
                                     <Text style={{ fontSize: 9, color: colors.subtext, marginTop: 2 }}>Ocultar localização de amigos</Text>
@@ -644,6 +669,25 @@ export function ProfileView() {
                             </View>
                             <PremiumSwitch value={userSettings.batterySaver} onValueChange={(v) => handleToggleSetting('batterySaver', v)} trackColor={{ false: '#EEE', true: colors.primary }} />
                         </View>
+
+                        <Pressable style={styles.optionItem} onPress={async () => {
+                            await NotificationService.sendLocalTestNotification(
+                                "WanderPet 🦴",
+                                "Seu pet está com saudades! Clique para ver.",
+                                { screen: '/social' }
+                            );
+                            showToast({ 
+                                message: "Notificação agendada para 2s!", 
+                                type: 'info', 
+                                icon: 'notifications' 
+                            });
+                        }}>
+                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                <Ionicons name="notifications" size={20} color={colors.primary} />
+                                <Text style={[styles.optionTitle, { color: colors.primary }]}>DEV: Testar Notificação</Text>
+                            </View>
+                            <Ionicons name="send" size={16} color={colors.primary} />
+                        </Pressable>
 
                         <Pressable style={[styles.optionItem, { borderBottomWidth: 0 }]} onPress={async () => {
                             await generateFakeHistoryLocal();

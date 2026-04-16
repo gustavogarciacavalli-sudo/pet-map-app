@@ -108,8 +108,8 @@ const styles = StyleSheet.create({
     content: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 10,
+        justifyContent: 'flex-start',
+        gap: 12,
     },
     message: {
         fontSize: 14,

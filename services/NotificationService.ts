@@ -113,5 +113,29 @@ export const NotificationService = {
             receivedSub.remove();
             responseSub.remove();
         };
+    },
+
+    /**
+     * Dispara uma notificação local para teste (Funciona no Expo Go / Localhost)
+     */
+    sendLocalTestNotification: async (title: string, body: string, data?: any) => {
+        try {
+            await Notifications.scheduleNotificationAsync({
+                content: {
+                    title,
+                    body,
+                    data: data || { screen: '/social' }, // Padrão para testar o redirecionamento
+                    sound: true,
+                },
+                trigger: {
+                    seconds: 2, // Espera 2 segundos para dar tempo do usuário mudar de tela
+                    channelId: 'default',
+                },
+            });
+            return true;
+        } catch (error) {
+            console.error('Erro ao agendar notificação local:', error);
+            return false;
+        }
     }
 };

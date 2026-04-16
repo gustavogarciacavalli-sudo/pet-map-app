@@ -1,15 +1,18 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Alert, Switch, Modal, TextInput, Clipboard, LayoutAnimation, Platform, UIManager, Animated } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Alert, Switch, Modal, TextInput, Clipboard, LayoutAnimation, Platform, UIManager, Animated, Easing } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { PetPreview } from './PetPreview';
 import { getPetLocal, LocalPet, getCurrentUserLocal, LocalUser, getCoinsLocal, getLevelDataLocal, logoutLocal, updatePetLocal, checkNameAvailabilityLocal, getTotalDistanceLocal, getWeeklyActivityLocal, getPathByDateLocal, generateFakeHistoryLocal, getClaimedQuestsLocal, getSettingsLocal, saveSettingsLocal, UserSettings, updateUserLocal } from '../localDatabase';
 import { AuthService } from '../services/AuthService';
+import { NotificationService } from '../services/NotificationService';
+import { useToast } from './ToastProvider';
 import { Leaderboard } from './Leaderboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MAIN_QUESTS, DAILY_QUESTS, WEEKLY_QUESTS, MONTHLY_QUESTS } from '../data/questsData';
 import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { MapViewProvider, MapPolyline } from './MapViewProvider';
 import { useTheme } from './ThemeContext';
+import { PremiumSwitch } from './PremiumSwitch';
 
 const MEDAL_TIERS = [
     { min: 0, name: 'Molde Vazio', color: '#555555', bg: '#88888822' },
@@ -58,6 +61,7 @@ export function ProfileView() {
 
     const router = useRouter();
     const { colors, theme, toggleTheme, isDarkMode } = useTheme();
+    const { showToast } = useToast();
     
     const [pet, setPet] = useState<LocalPet | null>(null);
     const [user, setUser] = useState<LocalUser | null>(null);
@@ -105,7 +109,8 @@ export function ProfileView() {
         // Expansão (Altura e Opacidade)
         Animated.timing(configExpandAnim, {
             toValue,
-            duration: 300,
+            duration: 500,
+            easing: Easing.out(Easing.exp),
             useNativeDriver: false // maxHeight não suporta native driver
         }).start();
 
@@ -125,7 +130,8 @@ export function ProfileView() {
         // Expansão
         Animated.timing(securityExpandAnim, {
             toValue,
-            duration: 300,
+            duration: 500,
+            easing: Easing.out(Easing.exp),
             useNativeDriver: false
         }).start();
 
@@ -215,6 +221,47 @@ export function ProfileView() {
     }
 
     const handleToggleSetting = async (key: keyof UserSettings, value: boolean) => {
+        // Lógica especial para notificações
+        if (key === 'notifications' && value === true) {
+            try {
+                const { granted, status } = await NotificationService.requestPermissions();
+                if (!granted) {
+                    showToast({ 
+                        message: "Permissão de notificação negada.", 
+                        type: 'error', 
+                        icon: 'notifications-off' 
+                    });
+                    return; // Não ativa se não teve permissão
+                } else {
+                    showToast({ 
+                        message: status === 'emulator' ? "Modo Dev: Notificações Simuladas" : "Notificações ligadas!", 
+                        type: 'success', 
+                        icon: 'notifications' 
+                    });
+                }
+            } catch (error) {
+                showToast({ message: "Erro ao configurar notificações", type: 'error' });
+                return;
+            }
+        }
+
+        // Lógica para Economia de Bateria
+        if (key === 'batterySaver') {
+            if (value) {
+                showToast({ 
+                    message: "Economia de Bateria Ativada! GPS Throttled & 30 FPS.", 
+                    type: 'success', 
+                    icon: 'battery-charging' 
+                });
+            } else {
+                showToast({ 
+                    message: "Modo Performance Ativado! 60 FPS Habilitado.", 
+                    type: 'info', 
+                    icon: 'flash' 
+                });
+            }
+        }
+
         const updated = await saveSettingsLocal({ [key]: value });
         setUserSettings(updated);
         
@@ -564,7 +611,7 @@ export function ProfileView() {
                                 <Ionicons name="moon" size={20} color={isDarkMode ? '#FFD700' : '#5C4033'} />
                                 <Text style={[styles.optionTitle, { color: colors.text }]}>Modo Noturno</Text>
                             </View>
-                            <Switch value={isDarkMode} onValueChange={toggleTheme} trackColor={{ false: '#EEE', true: colors.primary }} />
+                            <PremiumSwitch value={isDarkMode} onValueChange={toggleTheme} trackColor={{ false: '#EEE', true: colors.primary }} />
                         </View>
 
                         <View style={styles.optionItem}>
@@ -572,7 +619,7 @@ export function ProfileView() {
                                 <Ionicons name="notifications" size={20} color="#FF6B6B" />
                                 <Text style={[styles.optionTitle, { color: colors.text }]}>Notificações Push</Text>
                             </View>
-                            <Switch value={userSettings.notifications} onValueChange={(v) => handleToggleSetting('notifications', v)} trackColor={{ false: '#EEE', true: colors.primary }} />
+                            <PremiumSwitch value={userSettings.notifications} onValueChange={(v) => handleToggleSetting('notifications', v)} trackColor={{ false: '#EEE', true: colors.primary }} />
                         </View>
 
                         <View style={styles.optionItem}>
@@ -583,7 +630,7 @@ export function ProfileView() {
                                     <Text style={{ fontSize: 9, color: colors.subtext, marginTop: 2 }}>Ocultar localização de amigos</Text>
                                 </View>
                             </View>
-                            <Switch value={userSettings.ghostMode} onValueChange={(v) => handleToggleSetting('ghostMode', v)} trackColor={{ false: '#EEE', true: colors.primary }} />
+                            <PremiumSwitch value={userSettings.ghostMode} onValueChange={(v) => handleToggleSetting('ghostMode', v)} trackColor={{ false: '#EEE', true: colors.primary }} />
                         </View>
 
                         <View style={styles.optionItem}>
@@ -594,7 +641,7 @@ export function ProfileView() {
                                     <Text style={{ fontSize: 9, color: colors.subtext, marginTop: 2 }}>Verificar GPS com menos frequência</Text>
                                 </View>
                             </View>
-                            <Switch value={userSettings.batterySaver} onValueChange={(v) => handleToggleSetting('batterySaver', v)} trackColor={{ false: '#EEE', true: colors.primary }} />
+                            <PremiumSwitch value={userSettings.batterySaver} onValueChange={(v) => handleToggleSetting('batterySaver', v)} trackColor={{ false: '#EEE', true: colors.primary }} />
                         </View>
 
                         <Pressable style={[styles.optionItem, { borderBottomWidth: 0 }]} onPress={async () => {
@@ -748,19 +795,36 @@ export function ProfileView() {
                 </View>
             </Modal>
             {/* Modal Medalha */}
-            <Modal visible={!!selectedMedal} animationType="slide" transparent={true}>
+            <Modal 
+                visible={!!selectedMedal} 
+                animationType="slide" 
+                transparent={true}
+                onRequestClose={() => setSelectedMedal(null)}
+            >
                 <View style={[styles.modalOverlay, { paddingHorizontal: 30 }]}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, alignItems: 'center' }]}>
+                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, alignItems: 'center', position: 'relative' }]}>
                         {selectedMedal && (
                             <>
+                                <Pressable 
+                                    onPress={() => setSelectedMedal(null)}
+                                    style={{ position: 'absolute', top: 15, right: 15, zIndex: 10, padding: 5 }}
+                                >
+                                    <Ionicons name="close" size={24} color={colors.subtext} />
+                                </Pressable>
+
                                 <View style={[styles.medalMolde, { width: 80, height: 80, borderRadius: 40, borderWidth: 4, backgroundColor: selectedMedal.color + '22', borderColor: selectedMedal.color, marginBottom: 15 }]}>
                                     {selectedMedal.icon === 'FontAwesome5' && <FontAwesome5 name={selectedMedal.iconName} size={36} color={selectedMedal.color} />}
                                     {selectedMedal.icon === 'Ionicons' && <Ionicons name={selectedMedal.iconName as any} size={36} color={selectedMedal.color} />}
                                     {selectedMedal.icon === 'MaterialCommunityIcons' && <MaterialCommunityIcons name={selectedMedal.iconName as any} size={36} color={selectedMedal.color} />}
                                 </View>
-                                <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 5, fontSize: 24 }]}>Parabéns, {selectedMedal.title}!</Text>
+                                <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 5, fontSize: 24 }]}>
+                                    {selectedMedal.count > 0 ? `Parabéns, ${selectedMedal.title}!` : `Medalha de ${selectedMedal.title}`}
+                                </Text>
                                 <Text style={{ color: colors.text, fontSize: 13, textAlign: 'center', marginBottom: 15, lineHeight: 20 }}>
-                                    Você alcançou a cobiçada Medalha de <Text style={{ fontWeight: '900', color: selectedMedal.color, fontSize: 16 }}>{selectedMedal.tierName}</Text>.
+                                    {selectedMedal.count > 0 
+                                        ? `Você alcançou a cobiçada Medalha de `
+                                        : `Esta é a base para a Medalha de `}
+                                    <Text style={{ fontWeight: '900', color: selectedMedal.color, fontSize: 16 }}>{selectedMedal.tierName}</Text>.
                                 </Text>
                                 <View style={{ backgroundColor: selectedMedal.color + '15', padding: 12, borderRadius: 12, width: '100%', marginBottom: 25, borderWidth: 1, borderColor: selectedMedal.color + '44' }}>
                                     <Text style={{ color: colors.text, fontSize: 11, textAlign: 'center', fontStyle: 'italic', fontWeight: '600' }}>
@@ -772,7 +836,9 @@ export function ProfileView() {
                                     <Text style={{ color: colors.subtext, fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>MISSÕES CONCLUÍDAS</Text>
                                 </View>
                                 <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary, width: '100%' }]} onPress={() => setSelectedMedal(null)}>
-                                    <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>Incrível!</Text>
+                                    <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>
+                                        {selectedMedal.count > 0 ? 'Incrível!' : 'Entendido'}
+                                    </Text>
                                 </Pressable>
                             </>
                         )}

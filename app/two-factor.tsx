@@ -1,5 +1,5 @@
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     Alert,
     Pressable,
@@ -11,7 +11,6 @@ import {
     StatusBar,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Animated, { FadeIn, ZoomIn, useSharedValue, useAnimatedStyle, withSequence, withTiming } from 'react-native-reanimated';
 import { finalizeLoginLocal, getPetLocal } from '../localDatabase';
 import { AuthService } from '../services/AuthService';
 import { TapSparkles } from '../components/TapSparkles';
@@ -31,10 +30,9 @@ const C = {
 export default function TwoFactorScreen() {
     const { height } = useWindowDimensions();
     const router = useRouter();
-    const { uid, email } = useLocalSearchParams<{ uid: string, email: string }>();
+    const { uid } = useLocalSearchParams<{ uid: string, email: string }>();
     const [pin, setPin] = useState('');
     const [sparksActive, setSparksActive] = useState(false);
-    const shakeX = useSharedValue(0);
 
     const handleNumber = (num: string) => {
         if (pin.length < 4) {
@@ -44,30 +42,25 @@ export default function TwoFactorScreen() {
 
     const handleClear = () => setPin('');
 
-    const shake = () => {
-        shakeX.value = withSequence(withTiming(-10, { duration: 50 }), withTiming(10, { duration: 50 }), withTiming(-7, { duration: 50 }), withTiming(7, { duration: 50 }), withTiming(0, { duration: 50 }));
+    const triggerFeedback = () => {
         Vibration.vibrate(100);
     };
 
     const handleConfirm = async () => {
         if (pin.length < 4) {
-            shake();
+            triggerFeedback();
             return;
         }
 
         try {
-            // Buscamos o perfil do usuário no SUPABASE real
             const userProfile = await AuthService.getUserProfile(uid);
 
             if (userProfile && userProfile.twoFactorPin === pin) {
-                // Sincronizar dados da nuvem para o local antes de entrar
                 try {
                     const fullData = await AuthService.fetchFullUserData(uid);
                     if (fullData) {
-                        // Salvar perfil local
                         await finalizeLoginLocal(userProfile as any);
                         
-                        // Sincronizar Moedas/XP/Missões se existirem na nuvem
                         if (fullData.profile) {
                             const { coins, gems, xp, level, claimed_quests } = fullData.profile;
                             await AsyncStorage.multiSet([
@@ -79,7 +72,6 @@ export default function TwoFactorScreen() {
                             ]);
                         }
                         
-                        // Sincronizar Pet
                         if (fullData.pet) {
                             await AsyncStorage.setItem('@wanderpet_pet', JSON.stringify({
                                 name: fullData.pet.name,
@@ -104,15 +96,13 @@ export default function TwoFactorScreen() {
                     router.replace('/(tabs)');
                 }
             } else {
-                shake();
+                triggerFeedback();
                 setPin('');
             }
         } catch (e) {
             Alert.alert('Erro', 'Ocorreu um problema na verificação real do PIN.');
         }
     };
-
-    const animStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shakeX.value }] }));
 
     const NumBtn = ({ n }: { n: string }) => (
         <Pressable 
@@ -131,17 +121,17 @@ export default function TwoFactorScreen() {
             <View style={[styles.sky, { height: height * 0.5 }]} />
             <View style={styles.grassContainer} />
 
-            <Animated.View entering={FadeIn} style={styles.container}>
+            <View style={styles.container}>
                 <View style={styles.card}>
                     <View style={styles.leafRow}><Text style={styles.appName}>WanderPet</Text></View>
                     <Text style={styles.title}>Verificação 2FA</Text>
                     <Text style={styles.subtitle}>Digite seu PIN de 4 dígitos para entrar.</Text>
 
-                    <Animated.View style={[styles.pinDisplay, animStyle]}>
+                    <View style={styles.pinDisplay}>
                         {[...Array(4)].map((_, i) => (
                             <View key={i} style={[styles.pinDot, pin.length > i && styles.pinDotFilled]} />
                         ))}
-                    </Animated.View>
+                    </View>
 
                     <View style={styles.keypad}>
                         <View style={styles.row}>
@@ -176,7 +166,7 @@ export default function TwoFactorScreen() {
                         <Text style={styles.cancelText}>Voltar para o Login</Text>
                     </Pressable>
                 </View>
-            </Animated.View>
+            </View>
         </View>
     );
 }

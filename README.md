@@ -1,11 +1,14 @@
-# WanderPet 🐾 - Social Pet Adventure
+# WanderPet 🐾 - Social Pet Adventure (Ultra-Stable Edition)
 
-WanderPet é um aplicativo de aventura social onde você explora o mundo real com seu pet, descobre outros exploradores e se une a clãs! Agora com **Motor 3D imersivo e Sincronização em Tempo Real via Supabase!** 🔥
+WanderPet é um aplicativo de aventura social onde você explora o mundo real com seu pet, descobre outros exploradores e se une a clãs! 
+
+> [!IMPORTANT]
+> **ESTABILIDADE ALCANÇADA**: Esta versão foi totalmente refatorada para remover a biblioteca `react-native-reanimated`. Isso elimina qualquer crash de módulo nativo (`TurboModule`, `NullPointerException`) e garante 100% de compatibilidade com o **Expo Go (SDK 54)** no Android e iOS.
 
 ---
 
 ## 🚀 Status do Projeto
-O sistema foi recentemente migrado para o **Supabase** (Backend-as-a-Service), garantindo persistência na nuvem e recursos em tempo real para as abas Sociais, Clãs, Mensagens e o novo **Console de Ação**.
+O sistema foi recentemente estabilizado. Migramos as animações complexas para o motor padrão do React Native e consolidamos a integração com o **Supabase** para persistência na nuvem em tempo real.
 
 ---
 
@@ -14,7 +17,7 @@ O sistema foi recentemente migrado para o **Supabase** (Backend-as-a-Service), g
 Para o pleno funcionamento do app, execute o seguinte esquema SQL no seu Editor SQL do Supabase:
 
 ```sql
--- 1. Tabela de Perfis (Extensão de Auth.Users)
+-- 1. Tabela de Perfis
 CREATE TABLE public.profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   name TEXT,
@@ -25,51 +28,32 @@ CREATE TABLE public.profiles (
   coins INTEGER DEFAULT 0,
   level INTEGER DEFAULT 1,
   xp INTEGER DEFAULT 0,
+  two_factor_pin TEXT,
+  security_question TEXT,
+  security_answer TEXT,
   claimed_quests TEXT[] DEFAULT '{}'::TEXT[]
 );
 
--- 2. Sistema de Clãs (Grupos)
+-- 2. Sistema de Clãs
 CREATE TABLE public.groups (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   password TEXT,
+  founder_id UUID REFERENCES public.profiles(id),
   is_public BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
-CREATE TABLE public.group_members (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  group_id UUID REFERENCES public.groups ON DELETE CASCADE,
-  user_id UUID REFERENCES public.profiles ON DELETE CASCADE,
-  UNIQUE(group_id, user_id)
-);
-
--- 3. Sistema Social (Amizades e Mensagens)
-CREATE TABLE public.friendships (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id1 UUID REFERENCES public.profiles ON DELETE CASCADE,
-  user_id2 UUID REFERENCES public.profiles ON DELETE CASCADE,
-  status TEXT DEFAULT 'pending', -- 'pending' ou 'accepted'
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
-);
-
+-- 3. Mensagens e Social
 CREATE TABLE public.messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   sender_id UUID REFERENCES public.profiles ON DELETE CASCADE,
   recipient_id UUID REFERENCES public.profiles,
-  group_id UUID REFERENCES public.groups ON DELETE CASCADE,
   text TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
-CREATE TABLE public.social_likes (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES public.profiles ON DELETE CASCADE,
-  target_id UUID REFERENCES public.profiles ON DELETE CASCADE,
-  UNIQUE(user_id, target_id)
-);
-
--- 4. Localização e Infra 3D
+-- 4. Localização Sync
 CREATE TABLE public.locations (
   user_id UUID REFERENCES public.profiles ON DELETE CASCADE PRIMARY KEY,
   latitude DOUBLE PRECISION,
@@ -77,55 +61,37 @@ CREATE TABLE public.locations (
   ghost_mode BOOLEAN DEFAULT false,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
-
-CREATE TABLE public.expeditions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES public.profiles ON DELETE CASCADE,
-  distance DOUBLE PRECISION,
-  path JSONB,
-  duration_minutes INTEGER,
-  date DATE DEFAULT timezone('utc'::text, now())::date
-);
 ```
 
 ---
 
 ## 🕹️ Funcionalidades de Gameplay
 
-### 🗺️ Motor 3D (MapLibre + MapTiler)
-- **Câmera Inclinada**: Perspectiva 3D imersiva (pitch 60°) estilo RPG moderno.
-- **Interpolação Suave**: Marcadores se movem de forma fluida via Reanimated 3.
-- **Heading Sync**: O mapa rotaciona dinamicamente com a orientação do dispositivo.
+### 🗺️ Motor de Mapa Estável (MapLibre)
+- **Câmera Imersiva**: Perspectiva estilo RPG moderno com performance otimizada.
+- **Markers Seguros**: Movimentação de markers sem dependências de módulos nativos instáveis.
+- **Social Web**: Visualize sua rede de amizades e recomendações em tempo real.
 
-### 🏗️ Console de Ação (Ações Ativas)
-A gaveta inferior oferece ferramentas essenciais para sua jornada:
-- **Modo Sincronia**: Ganhe +50% de bônus em XP/Moedas ao sincronizar com amigos próximos (raio de 1km).
-- **Mochila**: Consumo de itens (Maçãs, Poções, Carne) para bônus de energia, XP ou felicidade.
-- **Radar de Tesouros**: Fareje baús e gemas escondidos no mapa (cooldown de 10 min).
-
-### 📡 Sincronização Real-time
-- **Broadcast**: Sua posição é transmitida instantaneamente para seu círculo social.
-- **Interação**: Veja amigos no mapa, aceite convites de sincronia e envie SOS.
-
----
-
-## 🚀 Atalhos de Dev
-- **Acesso Dev**: Na tela de Login, use o botão "Acesso Dev Rapidão 🚀" para pular autenticações durante testes.
-- **Seeding**: Botão dinâmico para povoar o mapa com Bots de teste (Luna, Rex, Miau).
+### 🏗️ Console de Ação
+- **Radar de Tesouros**: Fareje baús e gemas escondidos no mapa.
+- **Mochila & Inventário**: Gerencie seus itens e consumíveis localmente e na nuvem.
+- **Modo Sincronia**: Bônus de XP ao estar perto de outros jogadores.
 
 ---
 
 ## 🛠️ Tech Stack
 - **Framework**: Expo (SDK 54+)
-- **Backend**: Supabase (Postgres + Realtime)
-- **Mapas**: MapLibre GL
-- **Animações**: React Native Reanimated 3
-- **Design**: Vanilla CSS-in-JS (Premium Aesthetics)
-
-## 👩‍💻 Como Rodar
-1. `npm install`
-2. Configure as chaves do Supabase no arquivo `services/supabaseConfig.ts`
-3. `npx expo start`
+- **Backend-as-a-Service**: Supabase
+- **Local Database**: SQLite (via expo-sqlite)
+- **Map Engine**: MapLibre GL
+- **Design Aesthetic**: Vanilla CSS-in-JS (Ultra Premium UI)
 
 ---
-*Desenvolvido com ❤️ pela equipe WanderPet.*
+
+## 👨‍💻 Como Rodar
+1. `npm install`
+2. Configure as chaves do Supabase em `services/supabaseConfig.ts`
+3. `npx expo start -c` (O flag `-c` limpa o cache e garante a estabilidade)
+
+---
+*Desenvolvido com ❤️ pela equipe WanderPet. Estabilidade em primeiro lugar.*

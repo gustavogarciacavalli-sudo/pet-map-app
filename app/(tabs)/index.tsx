@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, SafeAreaView, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { useTheme } from '@/components/ThemeContext';
@@ -15,6 +16,7 @@ import { ParticleSystem, ParticleSystemRef } from '@/components/ParticleSystem';
 import { AuthService } from '@/services/AuthService';
 import { supabase } from '@/services/supabaseConfig';
 import { PetPreview } from '@/components/PetPreview';
+import { isValidUUID } from '@/services/AuthService';
 
 import { 
     getPetLocal, 
@@ -67,6 +69,7 @@ const PET_SPOTS: { id: string, name: string, type: SpotType, lat: number, lon: n
 
 export default function MapScreen() {
     const { colors, isDarkMode } = useTheme();
+    const insets = useSafeAreaInsets();
     const particleRef = useRef<ParticleSystemRef>(null);
     const locationSubscription = useRef<Location.LocationSubscription | null>(null);
     const router = useRouter();
@@ -259,8 +262,8 @@ export default function MapScreen() {
     }, []);
     
     const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-    const SHEET_MIN = 24;
-    const SHEET_MAX = SCREEN_HEIGHT - 250; // Aumentado para mostrar mais conteúdo, mas com margem para o HUD
+    const SHEET_MIN = Math.max(24, insets.bottom + 12);
+    const SHEET_MAX = SCREEN_HEIGHT - (insets.top + 200); // Aumentado para mostrar mais conteúdo, mas com margem para o HUD
 
     const sheetHeightAnim = useRef(new Animated.Value(SHEET_MIN)).current;
     const lastSheetHeight = useRef(SHEET_MIN);
@@ -385,6 +388,8 @@ export default function MapScreen() {
         locationSubscription.current = await Location.watchPositionAsync(
             trackingOptions,
             (loc) => {
+                // Se estiver em modo economia e o deslocamento for muito pequeno, ignoramos para poupar processamento se desejado
+                // Mas aqui apenas respeitamos as opções de intervalo do watchPositionAsync
                 const { latitude: newLat, longitude: newLon, heading } = loc.coords;
                 setLocation(prev => ({ ...prev, latitude: newLat, longitude: newLon, heading: heading || prev.heading }));
                 
@@ -396,22 +401,10 @@ export default function MapScreen() {
                 });
                 const syncCloudLocation = async () => {
                     const user = await getCurrentUserLocal();
-                    if (user) {
+                    if (user && isValidUUID(user.id)) {
                         const settings = await getSettingsLocal();
                         // 1. Persistência no DB (Postgres)
                         AuthService.updateLocation(user.id, newLat, newLon, settings.ghostMode);
-                        
-                        // 2. Broadcast em tempo real (Supabase Realtime)
-                        // @ts-ignore - se broadcastLocation estiver disponível no escopo/hook
-                        if (typeof broadcastLocation === 'function') {
-                            // @ts-ignore
-                            broadcastLocation({
-                                latitude: newLat,
-                                longitude: newLon,
-                                heading: heading || 0,
-                                timestamp: Date.now()
-                            });
-                        }
                     }
                 };
                 syncCloudLocation();
@@ -521,7 +514,8 @@ export default function MapScreen() {
         
         if (particleRef.current) {
             const { width: W, height: H } = Dimensions.get('window');
-            particleRef.current.burst(W / 2, H - 200, 'star');
+            // Reduz contagem de partículas na economia
+            particleRef.current.burst(W / 2, H - 200, economyMode ? 'heart' : 'star');
         }
         Alert.alert("Farejo Ativo!", "Seu pet encontrou rastros de tesouros próximos! Verifique o mapa.");
     };
@@ -689,7 +683,7 @@ export default function MapScreen() {
                     ))}
                 </MapViewLibre>
 
-                <SafeAreaView style={styles.topOverlay} pointerEvents="box-none">
+                <View style={[styles.topOverlay, { paddingTop: insets.top }]} pointerEvents="box-none">
                     <View style={styles.topBar}>
                         <Pressable style={styles.hudCircleBtn} onPress={() => router.push('/shop')}>
                             <Ionicons name="pricetag" size={20} color="#A78BFF" />
@@ -715,7 +709,7 @@ export default function MapScreen() {
                         </View>
                     </View>
 
-                </SafeAreaView>
+                </View>
             </View>
 
             <Animated.View style={[styles.bottomSheet, { height: sheetHeightAnim }]}>
@@ -863,7 +857,7 @@ export default function MapScreen() {
             {syncPayload && (
                 <View style={{
                     position: 'absolute',
-                    top: 60,
+                    top: 60 + insets.top,
                     left: 20,
                     right: 20,
                     backgroundColor: '#1C1C21',
@@ -1130,8 +1124,8 @@ export default function MapScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#000' },
-    topOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 },
-    topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, gap: 10 },
+    topOverlay: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100 },
+    topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 10 },
     hudCircleBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1C1C21', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#333' },
     circleDropdown: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1C1C21', paddingVertical: 10, borderRadius: 24, borderWidth: 1, borderColor: '#333', gap: 6 },
     circleDropdownText: { fontSize: 14, fontWeight: '700' },

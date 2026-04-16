@@ -1,15 +1,6 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, Dimensions, Image, Text, Pressable } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
-import Animated, { 
-    useSharedValue, 
-    useAnimatedStyle, 
-    withRepeat, 
-    withTiming, 
-    withDelay,
-    interpolate,
-    Extrapolate
-} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -40,8 +31,6 @@ interface NearbyWebProps {
     userId: string;
 }
 
-const AnimatedLine = Animated.createAnimatedComponent(Line);
-
 export const NearbyWeb: React.FC<NearbyWebProps> = ({ 
     explorers, 
     links = [],
@@ -50,36 +39,23 @@ export const NearbyWeb: React.FC<NearbyWebProps> = ({
     userColor,
     userId
 }) => {
-    const pulse = useSharedValue(0);
-
-    useEffect(() => {
-        pulse.value = withRepeat(
-            withTiming(1, { duration: 3000 }),
-            -1,
-            true
-        );
-    }, []);
-
     // Gera posições orbitais fixas para os exploradores
     const positionsMap = useMemo(() => {
-        const map = new Map<string, { x: number, y: number, delay: number }>();
+        const map = new Map<string, { x: number, y: number }>();
         
         // Centro (Usuário logado)
-        map.set(userId, { x: CENTER, y: CENTER, delay: 0 });
+        map.set(userId, { x: CENTER, y: CENTER });
 
         explorers.forEach((ex, index) => {
             const angle = (index / explorers.length) * 2 * Math.PI;
             const radius = (WEB_SIZE / 2) * 0.7; // 70% do raio total
             map.set(ex.id, {
                 x: CENTER + radius * Math.cos(angle),
-                y: CENTER + radius * Math.sin(angle),
-                delay: (index + 1) * 200
+                y: CENTER + radius * Math.sin(angle)
             });
         });
         return map;
     }, [explorers, userId]);
-
-    const explorerPositions = explorers.map(ex => positionsMap.get(ex.id)!);
 
     return (
         <View style={styles.container}>
@@ -91,15 +67,15 @@ export const NearbyWeb: React.FC<NearbyWebProps> = ({
                     {explorers.map((ex, i) => {
                         const pos = positionsMap.get(ex.id)!;
                         return (
-                            <WebLine 
+                            <Line 
                                 key={`center-line-${ex.id}`} 
-                                startX={CENTER} 
-                                startY={CENTER} 
-                                endX={pos.x} 
-                                endY={pos.y} 
-                                pulse={pulse}
-                                delay={pos.delay}
-                                color={userColor}
+                                x1={CENTER} 
+                                y1={CENTER} 
+                                x2={pos.x} 
+                                y2={pos.y} 
+                                stroke={userColor}
+                                strokeWidth={1}
+                                opacity={0.3}
                             />
                         );
                     })}
@@ -111,16 +87,16 @@ export const NearbyWeb: React.FC<NearbyWebProps> = ({
                         if (!start || !end) return null;
 
                         return (
-                            <WebLine 
+                            <Line 
                                 key={`link-line-${i}`} 
-                                startX={start.x} 
-                                startY={start.y} 
-                                endX={end.x} 
-                                endY={end.y} 
-                                pulse={pulse}
-                                delay={0}
-                                color={userColor}
-                                isSecondary
+                                x1={start.x} 
+                                y1={start.y} 
+                                x2={end.x} 
+                                y2={end.y} 
+                                stroke={userColor}
+                                strokeWidth={1}
+                                opacity={0.15}
+                                strokeDasharray="4 4"
                             />
                         );
                     })}
@@ -155,54 +131,12 @@ export const NearbyWeb: React.FC<NearbyWebProps> = ({
     );
 };
 
-// Componente secundário para a Linha Animada
-const WebLine = ({ startX, startY, endX, endY, pulse, delay, color, isSecondary }: any) => {
-    const animatedProps = useAnimatedStyle(() => ({
-        opacity: interpolate(pulse.value, [0, 1], isSecondary ? [0.05, 0.2] : [0.1, 0.4]),
-        strokeWidth: interpolate(pulse.value, [0, 1], isSecondary ? [1, 1.5] : [1, 2]),
-    }));
-
-    return (
-        <AnimatedLine 
-            x1={startX} 
-            y1={startY} 
-            x2={endX} 
-            y2={endY} 
-            stroke={color}
-            strokeDasharray={isSecondary ? "4 4" : undefined}
-            animatedProps={animatedProps as any}
-        />
-    );
-};
-
-// Componente secundário para o Nó Animado
+// Componente secundário para o Nó
 const ExplorerNode = ({ explorer, pos, onPress }: any) => {
-    const float = useSharedValue(0);
-
-    useEffect(() => {
-        float.value = withDelay(
-            pos.delay,
-            withRepeat(
-                withTiming(1, { duration: 2500 }),
-                -1,
-                true
-            )
-        );
-    }, []);
-
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [
-            { translateY: interpolate(float.value, [0, 1], [-8, 8]) },
-            { scale: interpolate(float.value, [0, 1], [1, 1.1]) }
-        ],
-        opacity: interpolate(float.value, [0, 0.2], [0, 1], Extrapolate.CLAMP)
-    }));
-
     return (
-        <Animated.View style={[
+        <View style={[
             styles.nodeContainer, 
-            { left: pos.x - 30, top: pos.y - 30 },
-            animatedStyle
+            { left: pos.x - 30, top: pos.y - 30 }
         ]}>
             <Pressable onPress={onPress}>
                 <View style={styles.nodeWrapper}>
@@ -221,7 +155,7 @@ const ExplorerNode = ({ explorer, pos, onPress }: any) => {
                     </View>
                 </View>
             </Pressable>
-        </Animated.View>
+        </View>
     );
 };
 

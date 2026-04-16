@@ -13,12 +13,6 @@ import {
     useWindowDimensions,
     Alert,
 } from 'react-native';
-import Animated, {
-    useAnimatedStyle,
-    useSharedValue,
-    withSequence,
-    withTiming,
-} from 'react-native-reanimated';
 import { savePetLocal, Species } from '../../localDatabase';
 import { PetPreview } from '../../components/PetPreview';
 import { TapSparkles } from '../../components/TapSparkles';
@@ -81,19 +75,14 @@ export default function CreateCharacterScreen() {
     const stepIndex = STEPS.indexOf(step);
     const isLast = step === 'name';
 
-    // Animations
-    const stepMove = useSharedValue(0);
-
     const next = () => {
         if (step === 'species') setStep('accessory');
         else if (step === 'accessory') setStep('name');
-        stepMove.value = withSequence(withTiming(-20, { duration: 100 }), withTiming(0, { duration: 200 }));
     };
 
     const back = () => {
         if (step === 'accessory') setStep('species');
         else if (step === 'name') setStep('accessory');
-        stepMove.value = withSequence(withTiming(20, { duration: 100 }), withTiming(0, { duration: 200 }));
     };
 
     const handleCreate = async () => {
@@ -123,11 +112,6 @@ export default function CreateCharacterScreen() {
         }
     };
 
-    const animStepStyle = useAnimatedStyle(() => ({
-        transform: [{ translateX: stepMove.value }],
-        opacity: withTiming(1, { duration: 200 })
-    }));
-
     return (
         <View style={styles.root}>
             <StatusBar barStyle="dark-content" />
@@ -153,7 +137,7 @@ export default function CreateCharacterScreen() {
                             />
                         </View>
 
-                        <Animated.View style={[styles.stepContent, animStepStyle]}>
+                        <View style={styles.stepContent}>
                             {step === 'species' && (
                                 <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 280 }}>
                                     <View style={styles.gridSpecies}>
@@ -194,7 +178,7 @@ export default function CreateCharacterScreen() {
                                     <View style={styles.inputUnderline} />
                                 </View>
                             )}
-                        </Animated.View>
+                        </View>
 
                         <View style={styles.bottomNav}>
                             {stepIndex > 0 && (

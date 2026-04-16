@@ -1,7 +1,8 @@
 import { supabase } from './supabaseConfig';
+import { Platform, LayoutAnimation } from 'react-native';
 
 // Utilitário para validar UUID e evitar erros 22P02 no banco
-const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+export const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 /**
  * AuthService centraliza a integração real com o Supabase.
@@ -12,7 +13,6 @@ export const AuthService = {
      */
     signUp: async (email: string, password: string, securityQuestion: string, securityAnswer: string, twoFactorPin: string) => {
         try {
-            // 1. Criar usuário no Supabase Auth
             const { data: authData, error: authError } = await supabase.auth.signUp({
                 email,
                 password,
@@ -21,7 +21,6 @@ export const AuthService = {
             if (authError) throw authError;
             if (!authData.user) throw new Error("Erro ao criar usuário.");
 
-            // 2. Criar perfil complementar na tabela 'profiles'
             const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
             const wanderId = `#WP-${randomStr}`;
 
@@ -40,7 +39,6 @@ export const AuthService = {
                 ]);
 
             if (profileError) throw profileError;
-
             return authData.user;
         } catch (error: any) {
             console.error("Erro no SignUp Supabase:", error);
@@ -48,16 +46,12 @@ export const AuthService = {
         }
     },
 
-    /**
-     * Login Real com verificação de perfil
-     */
     signIn: async (email: string, password: string) => {
         try {
             const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             });
-
             if (error) throw error;
             return data.user;
         } catch (error: any) {
@@ -66,9 +60,6 @@ export const AuthService = {
         }
     },
 
-    /**
-     * Busca dados extras do usuário (PIN, etc) na tabela 'profiles'
-     */
     getUserProfile: async (uid: string) => {
         try {
             const { data, error } = await supabase
@@ -78,9 +69,6 @@ export const AuthService = {
                 .single();
 
             if (error) throw error;
-            
-            // Adaptamos as chaves do banco (snake_case) para o código (camelCase) se necessário,
-            // ou apenas retornamos o objeto. Vamos mapear os principais para compatibilidade.
             return {
                 ...data,
                 twoFactorPin: data.two_factor_pin,
@@ -94,90 +82,6 @@ export const AuthService = {
         }
     },
 
-    /**
-     * Recuperação de senha via e-mail oficial do Supabase
-     */
-    requestPasswordReset: async (email: string) => {
-        try {
-            const { error } = await supabase.auth.resetPasswordForEmail(email);
-            if (error) throw error;
-            
-            return { 
-                success: true, 
-                message: 'Um link de redefinição foi enviado para o seu e-mail pelo Supabase.' 
-            };
-        } catch (error: any) {
-            throw error;
-        }
-    },
-
-    /**
-     * Passo 2: Valida o código de 6 dígitos (OTP) recebido por e-mail
-     */
-    verifyToken: async (email: string, token: string) => {
-        try {
-            const { data, error } = await supabase.auth.verifyOtp({
-                email,
-                token,
-                type: 'recovery',
-            });
-
-            if (error) throw error;
-            if (!data.user) throw new Error("Código inválido ou expirado.");
-
-            // Verifica se o usuário tem 2FA ativado
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('two_factor_pin')
-                .eq('id', data.user.id)
-                .single();
-
-            return {
-                success: true,
-                requires2FA: !!profile?.two_factor_pin,
-                uid: data.user.id
-            };
-        } catch (error: any) {
-            console.error("Erro ao verificar token:", error);
-            throw error;
-        }
-    },
-
-    /**
-     * Passo 3: Executa a troca de senha final no Supabase
-     */
-    executePasswordReset: async (email: string, token: string, newPassword: string, pin?: string) => {
-        try {
-            // 2. Se houver PIN, validamos contra o banco
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('two_factor_pin')
-                    .eq('id', user.id)
-                    .single();
-                
-                if (profile?.two_factor_pin && profile.two_factor_pin !== pin) {
-                    throw new Error("PIN de segurança incorreto.");
-                }
-            }
-
-            // 3. Atualizar a senha
-            const { error: updateError } = await supabase.auth.updateUser({
-                password: newPassword
-            });
-
-            if (updateError) throw updateError;
-            return { success: true };
-        } catch (error: any) {
-            console.error("Erro no executePasswordReset:", error);
-            throw error;
-        }
-    },
-
-    /**
-     * Atualiza a senha do usuário logado no Supabase Auth
-     */
     updatePassword: async (newPassword: string) => {
         try {
             const { error } = await supabase.auth.updateUser({
@@ -191,10 +95,8 @@ export const AuthService = {
         }
     },
 
-    /**
-     * Atualiza campos extras no Firestore/profiles
-     */
     updateProfile: async (uid: string, updates: any) => {
+        if (!isValidUUID(uid)) return { success: false };
         try {
             const { error } = await supabase
                 .from('profiles')
@@ -204,122 +106,73 @@ export const AuthService = {
             if (error) throw error;
             return { success: true };
         } catch (error: any) {
+            // Se for erro de coluna inexistente (PGRST204), ignoramos para não crashar o App
+            if (error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('schema cache')) {
+                console.warn("Aviso: Algumas colunas de configuração não foram encontradas no banco. Atualize o banco com o script SQL mais recente.");
+                return { success: false, silentError: true };
+            }
             console.error("Erro ao atualizar perfil no Supabase:", error);
             throw error;
         }
     },
 
-    /**
-     * Sincroniza estatísticas de jogo (Moedas, XP, Nível)
-     */
-    syncStats: async (uid: string, stats: { coins?: number, gems?: number, xp?: number, level?: number }) => {
+    syncStats: async (uid: string, stats: any) => {
+        if (!isValidUUID(uid)) return;
         try {
-            const { error } = await supabase
-                .from('profiles')
-                .update(stats)
-                .eq('id', uid);
-            if (error) throw error;
+            await supabase.from('profiles').update(stats).eq('id', uid);
         } catch (error: any) {
             console.error("Erro ao sincronizar stats no Supabase:", error);
         }
     },
 
-    /**
-     * Sincroniza dados do Pet (Nuvem)
-     */
     syncPet: async (ownerId: string, petData: any) => {
+        if (!isValidUUID(ownerId)) return;
         try {
-            const { error } = await supabase
-                .from('pets')
-                .upsert({
-                    owner_id: ownerId,
-                    name: petData.name,
-                    species: petData.species,
-                    accessory: petData.accessory || 'none',
-                    personality: petData.personality || 'active',
-                    custom_image_url: petData.customImageUri || null,
-                    updated_at: new Date().toISOString()
-                });
-            if (error) throw error;
+            await supabase.from('pets').upsert({
+                owner_id: ownerId,
+                name: petData.name,
+                species: petData.species,
+                accessory: petData.accessory || 'none',
+                custom_image_url: petData.customImageUri || null,
+                updated_at: new Date().toISOString()
+            });
         } catch (error: any) {
             console.error("Erro ao sincronizar Pet no Supabase:", error);
         }
     },
 
-    /**
-     * Busca TODOS os dados do usuário (Perfil + Pet) de uma vez
-     */
-    fetchFullUserData: async (uid: string) => {
-        try {
-            const [profileRes, petRes] = await Promise.all([
-                supabase.from('profiles').select('*').eq('id', uid).single(),
-                supabase.from('pets').select('*').eq('owner_id', uid).single()
-            ]);
-
-            return {
-                profile: profileRes.data,
-                pet: petRes.data
-            };
-        } catch (error) {
-            console.error("Erro ao buscar dados completos:", error);
-            return null;
-        }
-    },
-
-    /**
-     * Sincroniza a localização em tempo real para o mapa social
-     */
     updateLocation: async (uid: string, latitude: number, longitude: number, ghostMode: boolean = false) => {
+        if (!isValidUUID(uid)) return;
         try {
-            const { error } = await supabase
-                .from('locations')
-                .upsert({
-                    user_id: uid,
-                    latitude,
-                    longitude,
-                    ghost_mode: ghostMode,
-                    updated_at: new Date().toISOString()
-                });
-            if (error) throw error;
+            await supabase.from('locations').upsert({
+                user_id: uid, latitude, longitude, ghost_mode: ghostMode,
+                updated_at: new Date().toISOString()
+            });
         } catch (error: any) {
             console.error("Erro ao sincronizar localização:", error);
         }
     },
 
-    /**
-     * Salva uma expedição completa na nuvem
-     */
     saveExpedition: async (uid: string, distance: number, path: any[], durationMinutes: number) => {
+        if (!isValidUUID(uid)) return;
         try {
-            const { error } = await supabase
-                .from('expeditions')
-                .insert([{
-                    user_id: uid,
-                    distance,
-                    path,
-                    duration_minutes: durationMinutes,
-                    date: new Date().toISOString().split('T')[0]
-                }]);
-            if (error) throw error;
+            await supabase.from('expeditions').insert([{
+                user_id: uid, distance, path, duration_minutes: durationMinutes,
+                date: new Date().toISOString().split('T')[0]
+            }]);
         } catch (error: any) {
             console.error("Erro ao salvar expedição na nuvem:", error);
         }
     },
 
-
-    /**
-     * GLÃS (GRUPOS)
-     */
     createGroup: async (name: string, founderId: string, password?: string, isPublic: boolean = true) => {
+        if (!isValidUUID(founderId)) throw new Error("ID de fundador inválido.");
         try {
             const { data, error } = await supabase
                 .from('groups')
                 .insert([{ name, founder_id: founderId, password, is_public: isPublic }])
-                .select()
-                .single();
+                .select().single();
             if (error) throw error;
-
-            // Insere o fundador como primeiro membro
             await supabase.from('group_members').insert([{ group_id: data.id, user_id: founderId }]);
             return data;
         } catch (error) {
@@ -329,20 +182,17 @@ export const AuthService = {
     },
 
     joinGroup: async (groupId: string, userId: string) => {
+        if (!isValidUUID(userId)) return;
         try {
-            const { error } = await supabase.from('group_members').upsert([{ group_id: groupId, user_id: userId }]);
-            if (error) throw error;
+            await supabase.from('group_members').upsert([{ group_id: groupId, user_id: userId }]);
         } catch (error) {
             console.error("Erro ao entrar no clã:", error);
-            throw error;
         }
     },
 
     getGroups: async () => {
         try {
-            const { data, error } = await supabase
-                .from('groups')
-                .select('*, group_members(user_id)');
+            const { data, error } = await supabase.from('groups').select('*, group_members(user_id)');
             if (error) throw error;
             return data;
         } catch (error) {
@@ -351,36 +201,24 @@ export const AuthService = {
         }
     },
 
-    /**
-     * AMIZADES
-     */
     addFriendCloud: async (userId: string, friendId: string) => {
+        if (!isValidUUID(userId) || !isValidUUID(friendId)) return;
         try {
-            // BYPASS DE TESTE: Luna (#WP-LUNA) aceita na hora!
-            // ID fixo da Luna para testes: 00000000-0000-0000-0000-000000000001
             const isLuna = friendId === '00000000-0000-0000-0000-000000000001';
-            
-            const { error } = await supabase
-                .from('friendships')
-                .upsert([{ 
-                    user_id1: userId, 
-                    user_id2: friendId, 
-                    status: isLuna ? 'accepted' : 'pending' 
-                }]);
-            if (error) throw error;
+            await supabase.from('friendships').upsert([{ 
+                user_id1: userId, user_id2: friendId, 
+                status: isLuna ? 'accepted' : 'pending' 
+            }]);
         } catch (error) {
             console.error("Erro ao enviar solicitação na nuvem:", error);
-            throw error;
         }
     },
 
     getFriendsCloud: async (userId: string) => {
         if (!isValidUUID(userId)) return [];
         try {
-            const { data, error } = await supabase
-                .from('friendships')
-                .select('*')
-                .eq('status', 'accepted')
+            const { data, error } = await supabase.from('friendships')
+                .select('*').eq('status', 'accepted')
                 .or(`user_id1.eq.${userId},user_id2.eq.${userId}`);
             if (error) throw error;
             return data.map(f => f.user_id1 === userId ? f.user_id2 : f.user_id1);
@@ -390,69 +228,32 @@ export const AuthService = {
         }
     },
 
-    /**
-     * Busca exploradores próximos (quem não é amigo ainda)
-     */
     getNearbyExplorers: async (userId: string) => {
         if (!isValidUUID(userId)) return [];
         try {
-            // 1. Pega lista de amigos para excluir
             const friends = await AuthService.getFriendsCloud(userId);
-            const excludeIds = [userId, ...friends];
-
-            // Filtra apenas IDs válidos para a query SQL
-            const validExcludeIds = excludeIds.filter(id => isValidUUID(id));
-            if (validExcludeIds.length === 0) {
-                // Se não houver IDs válidos, busca normalmente mas exclui o próprio usuário se ele for UUID
-                const { data, error } = await supabase.from('profiles').select('*').limit(6);
-                if (error) throw error;
-                return data;
-            }
-
-            // 2. Busca perfis aleatórios (simulando proximidade)
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .not('id', 'in', `(${validExcludeIds.join(',')})`)
-                .limit(6);
-
+            const excludeIds = [userId, ...friends].filter(id => isValidUUID(id));
+            const { data, error } = await supabase.from('profiles').select('*')
+                .not('id', 'in', `(${excludeIds.join(',')})`).limit(6);
             if (error) throw error;
-            
-            // Mapeia avatares para os bots conhecidos se estiverem sem avatar
-            const mappedData = data.map(p => {
+            return data.map(p => {
                 if (p.wander_id === '#WP-LUNA' && !p.avatar) p.avatar = 'https://i.ibb.co/vzrKxXw/luna-bunny.png';
                 if (p.wander_id === '#WP-REX' && !p.avatar) p.avatar = 'https://i.ibb.co/M9xYyL7/rex-dog.png';
                 if (p.wander_id === '#WP-MIAU' && !p.avatar) p.avatar = 'https://i.ibb.co/L5k6pXN/miau-cat.png';
                 return p;
             });
-
-            return mappedData;
         } catch (error) {
             console.error("Erro ao buscar exploradores próximos:", error);
             return [];
         }
     },
 
-    /**
-     * Busca solicitações de amizade pendentes para o usuário
-     */
     getPendingRequestsCloud: async (userId: string) => {
         if (!isValidUUID(userId)) return [];
         try {
-            const { data, error } = await supabase
-                .from('friendships')
-                .select(`
-                    id,
-                    user_id1,
-                    profiles!friendships_user_id1_fkey (
-                        name,
-                        avatar,
-                        wander_id
-                    )
-                `)
-                .eq('user_id2', userId)
-                .eq('status', 'pending');
-            
+            const { data, error } = await supabase.from('friendships')
+                .select('id, user_id1, profiles!friendships_user_id1_fkey(name, avatar, wander_id)')
+                .eq('user_id2', userId).eq('status', 'pending');
             if (error) throw error;
             return data;
         } catch (error) {
@@ -461,91 +262,58 @@ export const AuthService = {
         }
     },
 
-    /**
-     * Aceita ou recusa uma solicitação
-     */
     respondFriendRequestCloud: async (requestId: string, status: 'accepted' | 'declined') => {
         try {
             if (status === 'accepted') {
-                const { error } = await supabase
-                    .from('friendships')
-                    .update({ status: 'accepted' })
-                    .eq('id', requestId);
-                if (error) throw error;
+                await supabase.from('friendships').update({ status: 'accepted' }).eq('id', requestId);
             } else {
-                const { error } = await supabase
-                    .from('friendships')
-                    .delete()
-                    .eq('id', requestId);
-                if (error) throw error;
+                await supabase.from('friendships').delete().eq('id', requestId);
             }
         } catch (error) {
             console.error("Erro ao responder solicitação:", error);
-            throw error;
         }
     },
 
-    /**
-     * Busca o histórico de atividade semanal do usuário (Últimos 7 dias)
-     */
     fetchWeeklyActivityCloud: async (userId: string) => {
+        if (!isValidUUID(userId)) return [];
         try {
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            
-            const { data, error } = await supabase
-                .from('expeditions')
-                .select('date, distance')
-                .eq('user_id', userId)
+            const { data, error } = await supabase.from('expeditions')
+                .select('date, distance').eq('user_id', userId)
                 .gte('date', sevenDaysAgo.toISOString().split('T')[0])
                 .order('date', { ascending: true });
-
-            if (error) throw error;
-
-            // Agregamos por data caso haja múltiplas expedições no mesmo dia
+            if (error) {
+                if (error.code === 'PGRST204' || error.message?.includes('schema cache')) return [];
+                throw error;
+            }
             const activityMap = new Map();
             data.forEach((exp: any) => {
                 const current = activityMap.get(exp.date) || 0;
                 activityMap.set(exp.date, current + exp.distance);
             });
-
-            return Array.from(activityMap.entries()).map(([date, distance]) => ({
-                date,
-                distance
-            }));
+            return Array.from(activityMap.entries()).map(([date, distance]) => ({ date, distance }));
         } catch (error) {
             console.error("Erro ao buscar atividade semanal na nuvem:", error);
             return [];
         }
     },
 
-    /**
-     * MISSÕES / CONQUISTAS
-     */
     syncQuests: async (userId: string, claimedQuests: string[]) => {
+        if (!isValidUUID(userId)) return;
         try {
-            const { error } = await supabase
-                .from('profiles')
-                .update({ claimed_quests: claimedQuests })
-                .eq('id', userId);
-            if (error) throw error;
+            await supabase.from('profiles').update({ claimed_quests: claimedQuests }).eq('id', userId);
         } catch (error) {
             console.error("Erro ao sincronizar missões:", error);
         }
     },
 
-    /**
-     * CHAT / MENSAGENS (Sincronizado com UI)
-     */
     fetchMessages: async (senderId: string, recipientId: string) => {
+        if (!isValidUUID(senderId) || !isValidUUID(recipientId)) return [];
         try {
-            const { data, error } = await supabase
-                .from('messages')
-                .select('*')
+            const { data, error } = await supabase.from('messages').select('*')
                 .or(`and(sender_id.eq.${senderId},recipient_id.eq.${recipientId}),and(sender_id.eq.${recipientId},recipient_id.eq.${senderId})`)
-                .order('created_at', { ascending: true })
-                .limit(50);
-            
+                .order('created_at', { ascending: true }).limit(50);
             if (error) throw error;
             return data;
         } catch (error) {
@@ -555,16 +323,12 @@ export const AuthService = {
     },
 
     sendMessageCloud: async (senderId: string, recipientId: string, text: string) => {
+        if (!isValidUUID(senderId) || !isValidUUID(recipientId)) return false;
         try {
-            const { error } = await supabase
-                .from('messages')
-                .insert([{
-                    sender_id: senderId,
-                    recipient_id: recipientId,
-                    text,
-                    created_at: new Date().toISOString()
-                }]);
-            
+            const { error } = await supabase.from('messages').insert([{
+                sender_id: senderId, recipient_id: recipientId, text,
+                created_at: new Date().toISOString()
+            }]);
             if (error) throw error;
             return true;
         } catch (error) {
@@ -574,33 +338,20 @@ export const AuthService = {
     },
 
     subscribeToMessages: (senderId: string, recipientId: string, onMessage: (msg: any) => void) => {
-        return supabase
-            .channel(`chat_${senderId}_${recipientId}`)
+        return supabase.channel(`chat_${senderId}_${recipientId}`)
             .on('postgres_changes', { 
-                event: 'INSERT', 
-                schema: 'public', 
-                table: 'messages',
+                event: 'INSERT', schema: 'public', table: 'messages',
                 filter: `recipient_id=eq.${senderId}` 
             }, (payload) => {
-                if (payload.new.sender_id === recipientId) {
-                    onMessage(payload.new);
-                }
-            })
-            .subscribe();
+                if (payload.new.sender_id === recipientId) onMessage(payload.new);
+            }).subscribe();
     },
-    
-    /**
-     * LIKES SOCIAIS
-     */
-    toggleLikeCloud: async (userId: string, targetId: string) => {
-        try {
-            const { data: existing } = await supabase
-                .from('social_likes')
-                .select('*')
-                .eq('user_id', userId)
-                .eq('target_id', targetId)
-                .single();
 
+    toggleLikeCloud: async (userId: string, targetId: string) => {
+        if (!isValidUUID(userId) || !isValidUUID(targetId)) return false;
+        try {
+            const { data: existing } = await supabase.from('social_likes')
+                .select('*').eq('user_id', userId).eq('target_id', targetId).single();
             if (existing) {
                 await supabase.from('social_likes').delete().eq('id', existing.id);
                 return false;
@@ -615,11 +366,9 @@ export const AuthService = {
     },
 
     getLikesCloud: async (userId: string) => {
+        if (!isValidUUID(userId)) return [];
         try {
-            const { data, error } = await supabase
-                .from('social_likes')
-                .select('target_id')
-                .eq('user_id', userId);
+            const { data, error } = await supabase.from('social_likes').select('target_id').eq('user_id', userId);
             if (error) throw error;
             return data.map(l => l.target_id);
         } catch (error) {
@@ -628,19 +377,11 @@ export const AuthService = {
         }
     },
 
-    /**
-     * RECOMENDAÇÕES (Sistema de Conexões)
-     */
     recommendUser: async (recommenderId: string, recommendedId: string) => {
         if (!isValidUUID(recommenderId) || !isValidUUID(recommendedId)) return false;
         try {
-            const { error } = await supabase
-                .from('recommendations')
-                .upsert([{ 
-                    recommender_id: recommenderId, 
-                    recommended_id: recommendedId 
-                }], { onConflict: 'recommender_id,recommended_id' });
-            
+            const { error } = await supabase.from('recommendations')
+                .upsert([{ recommender_id: recommenderId, recommended_id: recommendedId }], { onConflict: 'recommender_id,recommended_id' });
             if (error) throw error;
             return true;
         } catch (error) {
@@ -652,24 +393,13 @@ export const AuthService = {
     getRecommendationWeb: async (userId: string) => {
         if (!isValidUUID(userId)) return { explorers: [], links: [] };
         try {
-            // 1. Busca exploradores próximos (reutilizando a lógica existente de exclusão de amigos)
             const explorers = await AuthService.getNearbyExplorers(userId);
-            const explorerIds = [...explorers.map(e => e.id), userId];
-
-            // 2. Busca TODAS as recomendações que envolvem esses exploradores
-            const { data: recommendations, error } = await supabase
-                .from('recommendations')
+            const explorerIds = [...explorers.map(e => e.id), userId].filter(id => isValidUUID(id));
+            const { data: recommendations, error } = await supabase.from('recommendations')
                 .select('recommender_id, recommended_id')
-                .in('recommender_id', explorerIds)
-                .in('recommended_id', explorerIds);
-            
+                .in('recommender_id', explorerIds).in('recommended_id', explorerIds);
             if (error) throw error;
-
-            const links = recommendations.map(r => ({
-                from: r.recommender_id,
-                to: r.recommended_id
-            }));
-
+            const links = recommendations.map(r => ({ from: r.recommender_id, to: r.recommended_id }));
             return { explorers, links };
         } catch (error) {
             console.error("Erro ao buscar teia de recomendações:", error);
@@ -677,58 +407,73 @@ export const AuthService = {
         }
     },
 
-    /**
-     * SEEDING / DEV TOOLS
-     */
-    seedMockBots: async () => {
-        const BOTS = [
-            { name: 'Luna Bunny', species: 'bunny', level: 12 },
-            { name: 'Rex Dog', species: 'dog', level: 8 },
-            { name: 'Miau Cat', species: 'cat', level: 15 },
-            { name: 'Oliver Fox', species: 'fox', level: 5 },
-            { name: 'Bella Hamster', species: 'hamster', level: 3 },
-            { name: 'Cooper Bear', species: 'bear', level: 20 },
-        ];
-
+    fetchFullUserData: async (uid: string) => {
+        if (!isValidUUID(uid)) return null;
         try {
-            // @ts-ignore - Verificação de URL em tempo de execução
-            console.log("🚀 Iniciando seeding. URL alvo:", supabase.supabaseUrl);
-            
-            for (const bot of BOTS) {
-                const id = '00000000-0000-0000-0000-' + Math.random().toString(16).substring(2, 14).padStart(12, '0');
-                const wander_id = `#WP-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-                
-                // Inserir Perfil
-                const { error } = await supabase.from('profiles').insert([
-                    {
-                        id,
-                        name: bot.name,
-                        wander_id,
-                        email: `${bot.name.toLowerCase().replace(' ', '.')}@bot.wanderpet`,
-                        level: bot.level,
-                        coins: 100,
-                        gems: 10,
-                        security_question: 'Qual o seu pet favorito?',
-                        security_answer: bot.species
-                    }
-                ]);
-
-                if (error) {
-                    throw new Error(`Falha ao inserir ${bot.name}: ${error.message} (${error.code})`);
-                }
-            }
-            return { success: true };
-        } catch (error: any) {
-            console.error("Erro no seeding:", error);
-            return { success: false, message: error.message || "Erro desconhecido" };
+            const { data: profile } = await supabase.from('profiles').select('*').eq('id', uid).single();
+            const { data: pet } = await supabase.from('pets').select('*').eq('owner_id', uid).single();
+            return { profile, pet };
+        } catch (error) {
+            console.error("Erro ao buscar dados completos:", error);
+            return null;
         }
     },
 
-    /**
-     * Logout
-     */
-    logout: async () => {
-        const { error } = await supabase.auth.signOut();
+    requestPasswordReset: async (email: string) => {
+        const { error } = await supabase.auth.resetPasswordForEmail(email);
         if (error) throw error;
+        return { success: true };
+    },
+
+    verifyToken: async (email: string, token: string) => {
+        const { data, error } = await supabase.auth.verifyOtp({
+            email,
+            token,
+            type: 'recovery'
+        });
+        if (error) throw error;
+        // Verifica se o usuário tem 2FA ativo no perfil
+        const { data: profile } = await supabase.from('profiles').select('two_factor_pin').eq('id', data.user?.id).single();
+        return { success: true, requires2FA: !!profile?.two_factor_pin };
+    },
+
+    executePasswordReset: async (email: string, token: string, newPassword: string, pin?: string) => {
+        // Primeiro verificamos o OTP novamente para garantir a sessão de recovery
+        const { error: otpError } = await supabase.auth.verifyOtp({
+            email,
+            token,
+            type: 'recovery'
+        });
+        if (otpError) throw otpError;
+
+        // Se houver PIN, validamos no perfil (opcional dependendo da lógica desejada)
+        if (pin) {
+            const { data: user } = await supabase.auth.getUser();
+            const { data: profile } = await supabase.from('profiles').select('two_factor_pin').eq('id', user.user?.id).single();
+            if (profile?.two_factor_pin !== pin) throw new Error("PIN de segurança incorreto.");
+        }
+
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+        return { success: true };
+    },
+
+    seedMockBots: async () => {
+        try {
+            const bots = [
+                { id: '00000000-0000-0000-0000-000000000001', name: 'Luna', wander_id: '#WP-LUNA', email: 'luna@wanderpet.com' },
+                { id: '00000000-0000-0000-0000-000000000002', name: 'Rex', wander_id: '#WP-REX', email: 'rex@wanderpet.com' },
+                { id: '00000000-0000-0000-0000-000000000003', name: 'Miau', wander_id: '#WP-MIAU', email: 'miau@wanderpet.com' },
+            ];
+            const { error } = await supabase.from('profiles').upsert(bots);
+            if (error) throw error;
+            return { success: true };
+        } catch (error: any) {
+            return { success: false, message: error.message };
+        }
+    },
+
+    logout: async () => {
+        await supabase.auth.signOut();
     }
 };

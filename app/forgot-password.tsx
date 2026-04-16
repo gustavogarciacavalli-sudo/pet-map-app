@@ -12,7 +12,6 @@ import {
     useWindowDimensions,
     View,
 } from 'react-native';
-import Animated, { FadeIn, ZoomIn, SlideInRight } from 'react-native-reanimated';
 import { TapSparkles } from '../components/TapSparkles';
 import { AuthService } from '../services/AuthService';
 import { Ionicons } from '@expo/vector-icons';
@@ -50,9 +49,6 @@ export default function ForgotPasswordScreen() {
     const [sparksActive, setSparksActive] = useState(false);
     const [requires2FA, setRequires2FA] = useState(false);
 
-    /**
-     * Passo 1: Solicitar Token por E-mail
-     */
     const handleRequestToken = async () => {
         if (!email.trim() || !email.includes('@')) {
             Alert.alert('E-mail Inválido', 'Por favor, digite um e-mail válido.');
@@ -73,9 +69,6 @@ export default function ForgotPasswordScreen() {
         }
     };
 
-    /**
-     * Passo 2: Validar Token do E-mail
-     */
     const handleVerifyToken = async () => {
         if (token.length < 6) {
             Alert.alert('Atenção', 'O código deve ter 6 dígitos.');
@@ -93,9 +86,6 @@ export default function ForgotPasswordScreen() {
         }
     };
 
-    /**
-     * Passo 3: Reset Final (Com ou sem 2FA)
-     */
     const handleFinalReset = async () => {
         if (!newPassword.trim() || newPassword.length < 6) {
             Alert.alert('Senha Fraca', 'A senha deve ter pelo menos 6 caracteres.');
@@ -132,9 +122,8 @@ export default function ForgotPasswordScreen() {
 
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
                 <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-                    <Animated.View entering={FadeIn.duration(600)} style={styles.card}>
+                    <View style={styles.card}>
                         
-                        {/* Header Dinâmico */}
                         <View style={styles.header}>
                             <Ionicons 
                                 name={step === 'EMAIL' ? 'mail-open' : (step === 'TOKEN' ? 'shield-checkmark' : 'key')} 
@@ -150,12 +139,9 @@ export default function ForgotPasswordScreen() {
                             </Text>
                         </View>
 
-                        {/* Campos Dinâmicos */}
                         <View style={styles.fields}>
-                            
-                            {/* PASSO 1: EMAIL */}
                             {step === 'EMAIL' && (
-                                <Animated.View entering={FadeIn}>
+                                <View>
                                     <View style={styles.inputGroup}>
                                         <Text style={styles.inputLabel}>E-mail da conta:</Text>
                                         <TextInput 
@@ -167,12 +153,11 @@ export default function ForgotPasswordScreen() {
                                             keyboardType="email-address"
                                         />
                                     </View>
-                                </Animated.View>
+                                </View>
                             )}
 
-                            {/* PASSO 2: TOKEN */}
                             {step === 'TOKEN' && (
-                                <Animated.View entering={SlideInRight}>
+                                <View>
                                     <View style={styles.inputGroup}>
                                         <Text style={styles.inputLabel}>Código de 6 dígitos:</Text>
                                         <TextInput 
@@ -184,12 +169,11 @@ export default function ForgotPasswordScreen() {
                                             maxLength={6}
                                         />
                                     </View>
-                                </Animated.View>
+                                </View>
                             )}
 
-                            {/* PASSO 3: NOVA SENHA + 2FA */}
                             {step === 'SECURITY' && (
-                                <Animated.View entering={ZoomIn}>
+                                <View>
                                     <View style={styles.inputGroup}>
                                         <Text style={styles.inputLabel}>Nova Senha:</Text>
                                         <TextInput 
@@ -219,11 +203,10 @@ export default function ForgotPasswordScreen() {
                                             <Text style={styles.helperText}>Sua conta possui proteção extra ativada.</Text>
                                         </View>
                                     )}
-                                </Animated.View>
+                                </View>
                             )}
                         </View>
 
-                        {/* Ações */}
                         <View style={styles.actions}>
                             <Pressable 
                                 style={[styles.mainBtn, loading && { opacity: 0.7 }]} 
@@ -255,7 +238,7 @@ export default function ForgotPasswordScreen() {
                                 <Text style={styles.backBtnText}>Voltar</Text>
                             </Pressable>
                         </View>
-                    </Animated.View>
+                    </View>
                 </ScrollView>
             </KeyboardAvoidingView>
         </View>

@@ -1,11 +1,15 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import 'react-native-reanimated';
+import { Platform } from 'react-native';
+
 import { getCurrentUserLocal } from '../localDatabase';
 import { ThemeProvider } from '../components/ThemeContext';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { SupabaseRealtimeProvider } from '../components/SupabaseRealtimeProvider';
+import { ToastProvider } from '../components/ToastProvider';
+import * as NavigationBar from 'expo-navigation-bar';
 
 export const unstable_settings = {
   initialRouteName: 'index',
@@ -16,6 +20,14 @@ export default function RootLayout() {
   const [initializing, setInitializing] = useState(true);
   const router = useRouter();
   const segments = useSegments();
+
+  // Configuração Imersiva (Game Mode) via código para evitar avisos no app.json
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden');
+      NavigationBar.setBehaviorAsync('overlay-swipe');
+    }
+  }, []);
 
   useEffect(() => {
     async function checkUser() {
@@ -38,11 +50,7 @@ export default function RootLayout() {
 
     async function syncAndNavigate() {
       let currentUser = user;
-      if (!currentUser && inAuthGroup) {
-        currentUser = await getCurrentUserLocal();
-        setUser(currentUser);
-      }
-
+      
       if (!currentUser && inAuthGroup) {
         router.replace('/login');
       } else if (currentUser && segments[0] === 'login') {
@@ -56,17 +64,21 @@ export default function RootLayout() {
   if (initializing) return null;
 
   return (
-    <ThemeProvider>
-      <SupabaseRealtimeProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="social" options={{ animation: 'slide_from_right' }} />
-          <Stack.Screen name="pet-home" options={{ animation: 'slide_from_right' }} />
-        </Stack>
-        <StatusBar style="auto" />
-      </SupabaseRealtimeProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <SupabaseRealtimeProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="login" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="social" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="pet-home" options={{ animation: 'slide_from_right' }} />
+            </Stack>
+            <StatusBar style="auto" />
+          </SupabaseRealtimeProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

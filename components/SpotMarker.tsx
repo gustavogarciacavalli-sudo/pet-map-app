@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, StyleSheet, Text } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, interpolate, withSpring } from 'react-native-reanimated';
 import { MapMarkerLibre } from './MapViewLibre';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -34,20 +33,6 @@ export const SpotMarker: React.FC<SpotMarkerProps> = ({
     onPress 
 }) => {
     const config = SPOT_CONFIG[type] || SPOT_CONFIG.shop;
-    const pulse = useSharedValue(1);
-
-    React.useEffect(() => {
-        if (isNear) {
-            pulse.value = withRepeat(withTiming(1.3, { duration: 1000 }), -1, true);
-        } else {
-            pulse.value = withSpring(1);
-        }
-    }, [isNear]);
-
-    const auraStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: pulse.value }],
-        opacity: interpolate(pulse.value, [1, 1.3], [0.3, 0.6]),
-    }));
 
     return (
         <MapMarkerLibre id={id} coordinate={[longitude, latitude]}>
@@ -57,7 +42,9 @@ export const SpotMarker: React.FC<SpotMarkerProps> = ({
                 </View>
 
                 <View style={styles.markerWrapper}>
-                    <Animated.View style={[styles.aura, { backgroundColor: config.color }, auraStyle]} />
+                    {isNear && (
+                        <View style={[styles.aura, { backgroundColor: config.color, opacity: 0.4 }]} />
+                    )}
                     <View style={[styles.mainCircle, { backgroundColor: config.color }]}>
                         <Ionicons name={config.icon as any} size={20} color="#FFF" />
                     </View>

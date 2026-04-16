@@ -115,34 +115,6 @@ export const addToInventoryLocal = async (itemId: string): Promise<void> => {
     }
 };
 
-/** Lógica de consumo de itens (Mochila) */
-export const consumeItemLocal = async (itemId: string): Promise<{ success: boolean, bonus?: string }> => {
-    const inv = await getInventoryLocal();
-    const idx = inv.indexOf(itemId);
-    
-    if (idx === -1) return { success: false };
-
-    // Remove o item do inventário
-    inv.splice(idx, 1);
-    await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inv));
-
-    // Aplica bônus específicos baseados no ID do item
-    let bonus = "";
-    if (itemId === 'apple') {
-        const energy = await getEnergyLocal();
-        await saveEnergyLocal(energy + 20);
-        bonus = "+20 de Energia 🍏";
-    } else if (itemId === 'potion') {
-        const energy = await getEnergyLocal();
-        await saveEnergyLocal(energy + 50);
-        bonus = "+50 de Energia 🧪";
-    } else if (itemId === 'coin_bag') {
-        await addCoinsLocal(200);
-        bonus = "+200 Moedas 💰";
-    }
-
-    return { success: true, bonus };
-};
 
 export const getCoinsLocal = async (): Promise<number> => {
     try {
@@ -694,7 +666,11 @@ export const addHappinessLocal = async (amount: number): Promise<number> => {
 };
 
 /** Lógica de consumo de itens (Mochila) */
-export const consumeItemLocal = async (itemId: string): Promise<{ success: boolean, bonus?: string }> => {
+export const consumeItemLocal = async (
+    itemId: string, 
+    type?: 'energy' | 'xp' | 'happiness', 
+    amount?: number
+): Promise<{ success: boolean, bonus?: string }> => {
     const inv = await getInventoryLocal();
     const idx = inv.indexOf(itemId);
     
@@ -704,7 +680,15 @@ export const consumeItemLocal = async (itemId: string): Promise<{ success: boole
     inv.splice(idx, 1);
     await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inv));
 
-    // Aplica bônus específicos baseados no ID do item
+    // Se type e amount forem passados, usamos eles diretamente
+    if (type && amount) {
+        if (type === 'energy') await saveEnergyLocal((await getEnergyLocal()) + amount);
+        else if (type === 'xp') await addXPLocal(amount);
+        else if (type === 'happiness') await addHappinessLocal(amount);
+        return { success: true, bonus: `+${amount} de ${type}` };
+    }
+
+    // Caso contrário, usa a lógica padrão baseada no ID
     let bonus = "";
     if (itemId === 'apple') {
         const current = await getEnergyLocal();

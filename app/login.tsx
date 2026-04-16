@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
     Alert,
     KeyboardAvoidingView,
@@ -14,18 +14,6 @@ import {
     View,
     ViewStyle,
 } from 'react-native';
-import Animated, {
-    Easing,
-    useAnimatedStyle,
-    useSharedValue,
-    withDelay,
-    withRepeat,
-    withSequence,
-    withSpring,
-    withTiming,
-    SharedValue,
-    ZoomIn
-} from 'react-native-reanimated';
 import { getPetLocal, signInLocal, signUpLocal } from '../localDatabase';
 import { AuthService } from '../services/AuthService';
 import { TapSparkles } from '../components/TapSparkles';
@@ -75,32 +63,19 @@ const CloudDecor = ({ style }: { style?: ViewStyle }) => (
     </View>
 );
 
-const FloatStar = ({ x, y, color, delay }: { x: string | number; y: string | number; color: string; delay: number }) => {
-    const op = useSharedValue(0.4);
-    const scale = useSharedValue(1);
-
-    useEffect(() => {
-        op.value = withDelay(delay, withRepeat(withSequence(withTiming(1, { duration: 800 }), withTiming(0.4, { duration: 800 })), -1, false));
-        scale.value = withDelay(delay, withRepeat(withSequence(withTiming(1.4, { duration: 800 }), withTiming(1, { duration: 800 })), -1, false));
-    }, [delay, op, scale]);
-
-    const styleAnim = useAnimatedStyle(() => ({
-        opacity: op.value,
-        transform: [{ scale: scale.value }],
-    }));
-
+const FloatStar = ({ x, y, color }: { x: string | number; y: string | number; color: string }) => {
     return (
-        <Animated.View style={[{
+        <View style={{
             position: 'absolute', left: x as any, top: y as any,
             width: 8, height: 8, borderRadius: 4, backgroundColor: color,
-        }, styleAnim]} />
+            opacity: 0.7
+        }} />
     );
 };
 
-const BunnyPet = ({ translateY }: { translateY: SharedValue<number> }) => {
-    const animStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
+const BunnyPet = () => {
     return (
-        <Animated.View style={[styles.petLeft, animStyle]}>
+        <View style={styles.petLeft}>
             <View style={styles.petHead}>
                 <View style={[styles.ear, styles.earLeft, { backgroundColor: '#FFD6E8' }]}><View style={[styles.earInner, { backgroundColor: '#FFC2DC' }]} /></View>
                 <View style={[styles.ear, styles.earRight, { backgroundColor: '#FFD6E8' }]}><View style={[styles.earInner, { backgroundColor: '#FFC2DC' }]} /></View>
@@ -117,14 +92,13 @@ const BunnyPet = ({ translateY }: { translateY: SharedValue<number> }) => {
                     <View style={[styles.paw, { backgroundColor: '#FFF0F5', borderColor: '#F0C0D8' }]}><View style={[styles.pawToe, { backgroundColor: '#FFE0EE' }]} /><View style={[styles.pawToe, { backgroundColor: '#FFE0EE' }]} /></View>
                 </View>
             </View>
-        </Animated.View>
+        </View>
     );
 };
 
-const PuppyPet = ({ translateY }: { translateY: SharedValue<number> }) => {
-    const animStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
+const PuppyPet = () => {
     return (
-        <Animated.View style={[styles.petRight, animStyle]}>
+        <View style={styles.petRight}>
             <View style={styles.petHead}>
                 <View style={[styles.flopEar, styles.flopEarLeft, { backgroundColor: '#DEB887', borderColor: '#C8A060' }]}><View style={[styles.flopEarInner, { backgroundColor: '#CC9050' }]} /></View>
                 <View style={[styles.flopEar, styles.flopEarRight, { backgroundColor: '#DEB887', borderColor: '#C8A060' }]}><View style={[styles.flopEarInner, { backgroundColor: '#CC9050' }]} /></View>
@@ -142,7 +116,7 @@ const PuppyPet = ({ translateY }: { translateY: SharedValue<number> }) => {
                     <View style={[styles.paw, { backgroundColor: '#FAEBD7', borderColor: '#D4B896' }]}><View style={[styles.pawToe, { backgroundColor: '#EDD5B5' }]} /><View style={[styles.pawToe, { backgroundColor: '#EDD5B5' }]} /></View>
                 </View>
             </View>
-        </Animated.View>
+        </View>
     );
 };
 
@@ -156,42 +130,12 @@ export default function LoginScreen() {
     const [securityAnswer, setSecurityAnswer] = useState('');
     const [twoFactorPin, setTwoFactorPin] = useState('');
     const [isRegistering, setIsRegistering] = useState(false);
-    const [showSuccess, setShowSuccess] = useState(false);
     const [loading, setLoading] = useState(false);
     const router = useRouter();
-
-    const cardScale = useSharedValue(1);
-    const cardOpacity = useSharedValue(1);
-    const bunnyY = useSharedValue(0);
-    const puppyY = useSharedValue(0);
-    const btnScale = useSharedValue(1);
-    const shakeTx = useSharedValue(0);
     const [sparksActive, setSparksActive] = useState(false);
-
-    useEffect(() => {
-        bunnyY.value = withRepeat(withSequence(withTiming(-8, { duration: 1200, easing: Easing.inOut(Easing.sin) }), withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.sin) })), -1, false);
-        puppyY.value = withDelay(600, withRepeat(withSequence(withTiming(-8, { duration: 1200, easing: Easing.inOut(Easing.sin) }), withTiming(0, { duration: 1200, easing: Easing.inOut(Easing.sin) })), -1, false));
-    }, [bunnyY, puppyY, height]);
-
-    const petsCelebrate = () => {
-        bunnyY.value = withSequence(withSpring(-22, { damping: 6 }), withSpring(0, { damping: 10 }));
-        puppyY.value = withDelay(120, withSequence(withSpring(-22, { damping: 6 }), withSpring(0, { damping: 10 })));
-    };
-
-    const shakeCard = () => {
-        shakeTx.value = withSequence(withTiming(-8, { duration: 60 }), withTiming(8, { duration: 60 }), withTiming(-6, { duration: 60 }), withTiming(6, { duration: 60 }), withTiming(0, { duration: 60 }));
-    };
-
-    const cardStyleAnim = useAnimatedStyle(() => ({
-        transform: [{ scale: cardScale.value }, { translateX: shakeTx.value }],
-        opacity: cardOpacity.value,
-    }));
-
-    const btnStyleAnim = useAnimatedStyle(() => ({ transform: [{ scale: btnScale.value }] }));
 
     const handleAuth = async () => {
         if (!email.trim() || !password) {
-            shakeCard();
             Alert.alert('Atenção', 'Preencha todos os campos.');
             return;
         }
@@ -202,7 +146,6 @@ export default function LoginScreen() {
                     throw new Error("Preencha a pergunta de segurança e defina um PIN de 4+ dígitos.");
                 }
                 await AuthService.signUp(email.trim(), password, securityQuestion, securityAnswer, twoFactorPin);
-                petsCelebrate();
                 Alert.alert(
                     "E-mail de Confirmação",
                     "Enviamos um link de ativação para seu e-mail. Por favor, confirme-o para poder entrar na sua conta.",
@@ -216,16 +159,13 @@ export default function LoginScreen() {
                 );
             } else {
                 const authUser = await AuthService.signIn(email.trim(), password);
-                petsCelebrate();
                 
-                // Em vez de ir pro mapa, vai pra verificação de PIN (2FA)
                 router.push({
                     pathname: '/two-factor',
                     params: { uid: authUser.id, email: email.trim() }
                 });
             }
         } catch (error: any) {
-            shakeCard();
             Alert.alert('Erro', error.message || "Erro ao autenticar.");
         } finally {
             setLoading(false);
@@ -235,7 +175,6 @@ export default function LoginScreen() {
     const handleDevLogin = async () => {
         setLoading(true);
         try {
-            // Cria ou recupera o usuário de teste
             let user;
             try {
                 user = await signInLocal('dev@wanderpet.com', 'dev123');
@@ -245,14 +184,12 @@ export default function LoginScreen() {
             
             await AsyncStorage.setItem('@wanderpet_current_user', JSON.stringify(user));
             
-            // Verifica se o pet existe, se não cria um padrão
             const pet = await getPetLocal();
             if (!pet) {
                 const defaultPet: any = { name: 'DevBunny', species: 'bunny', accessory: 'none', personality: 'Happy' };
                 await AsyncStorage.setItem('@wanderpet_pet', JSON.stringify(defaultPet));
             }
 
-            petsCelebrate();
             router.replace('/(tabs)');
         } catch (error: any) {
             Alert.alert('Erro Dev', error.message);
@@ -282,9 +219,9 @@ export default function LoginScreen() {
     ];
 
     const stars = [
-        { x: '8%', y: '6%', color: C.peach, delay: 0 }, { x: '20%', y: '12%', color: C.lavender, delay: 300 },
-        { x: '75%', y: '8%', color: C.mint, delay: 600 }, { x: '88%', y: '15%', color: C.yellow, delay: 900 },
-        { x: '50%', y: '4%', color: C.pink, delay: 200 },
+        { x: '8%', y: '6%', color: C.peach }, { x: '20%', y: '12%', color: C.lavender },
+        { x: '75%', y: '8%', color: C.mint }, { x: '88%', y: '15%', color: C.yellow },
+        { x: '50%', y: '4%', color: C.pink },
     ];
 
     return (
@@ -299,9 +236,9 @@ export default function LoginScreen() {
 
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.kav}>
                 <ScrollView contentContainerStyle={[styles.scroll, { minHeight: height }]} keyboardShouldPersistTaps="handled">
-                    <Animated.View style={[styles.cardWrap, cardStyleAnim]}>
-                        <BunnyPet translateY={bunnyY} />
-                        <PuppyPet translateY={puppyY} />
+                    <View style={styles.cardWrap}>
+                        <BunnyPet />
+                        <PuppyPet />
                         {decoRects.map((r, i) => (
                             <View key={i} style={[styles.decoRect, { top: r.top, left: r.left, right: r.right, backgroundColor: r.color }]} />
                         ))}
@@ -321,7 +258,7 @@ export default function LoginScreen() {
                                 <TextInput style={styles.input} placeholder="Senha" value={password} onChangeText={setPassword} secureTextEntry />
                                 
                                 {isRegistering && (
-                                    <Animated.View entering={ZoomIn.duration(400)} style={{ gap: 12 }}>
+                                    <View style={{ gap: 12 }}>
                                         <View style={styles.inputGroup}>
                                             <Text style={styles.inputLabel}>Pergunta de Segurança:</Text>
                                             <TextInput style={styles.input} value={securityQuestion} onChangeText={setSecurityQuestion} />
@@ -334,7 +271,7 @@ export default function LoginScreen() {
                                             <Text style={styles.inputLabel}>PIN de 2 Etapas (ex: 1234):</Text>
                                             <TextInput style={styles.input} placeholder="Digite 4 números" value={twoFactorPin} onChangeText={setTwoFactorPin} keyboardType="numeric" maxLength={4} secureTextEntry />
                                         </View>
-                                    </Animated.View>
+                                    </View>
                                 )}
 
                                 {!isRegistering && (
@@ -344,23 +281,8 @@ export default function LoginScreen() {
                                 )}
                             </View>
 
-                            {showSuccess && (
-                                <Animated.View entering={ZoomIn.springify()} style={styles.successOverlay}>
-                                    <View style={styles.successBall}>
-                                        <Ionicons name="checkmark-circle" size={48} color={C.mint} />
-                                        <Text style={styles.successTitle}>Conta criada com sucesso</Text>
-                                        <Text style={styles.successSub}>A aventura vai começar!</Text>
-                                    </View>
-                                </Animated.View>
-                            )}
-
-                            <Animated.View style={btnStyleAnim}>
+                            <View>
                                 <Pressable
-                                    onPressIn={() => { 
-                                        btnScale.value = withSpring(0.94); 
-                                        setSparksActive(false);
-                                    }}
-                                    onPressOut={() => { btnScale.value = withSpring(1); }}
                                     onPress={() => {
                                         setSparksActive(true);
                                         handleAuth();
@@ -370,7 +292,7 @@ export default function LoginScreen() {
                                     <TapSparkles active={sparksActive} />
                                     <Text style={styles.mainBtnText}>{loading ? '...' : isRegistering ? 'Criar conta' : 'Entrar'}</Text>
                                 </Pressable>
-                            </Animated.View>
+                            </View>
 
                             <Pressable 
                                 onPress={handleDevLogin}
@@ -396,7 +318,7 @@ export default function LoginScreen() {
                                 <Text style={{ color: C.textLight, fontSize: 13, textDecorationLine: 'underline', fontWeight: 'bold' }}>[DEV] Limpar Banco de Dados</Text>
                             </Pressable>
                         </View>
-                    </Animated.View>
+                    </View>
                 </ScrollView>
             </KeyboardAvoidingView>
         </View>
@@ -428,6 +350,7 @@ const styles = StyleSheet.create({
     mainBtnText: { fontSize: 17, fontWeight: '900' },
     petLeft: { position: 'absolute', left: -50, bottom: 20, zIndex: 10, width: 70 },
     petRight: { position: 'absolute', right: -50, bottom: 20, zIndex: 10, width: 70 },
+    devBtn: { borderRadius: 22, padding: 14, alignItems: 'center', elevation: 3, width: '100%' },
     petHead: { alignItems: 'center' },
     headCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#FFF', borderWidth: 2, borderColor: '#DDD', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
     ear: { position: 'absolute', width: 20, height: 35, borderRadius: 10, top: -15 },

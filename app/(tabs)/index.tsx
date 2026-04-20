@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, SafeAreaView, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal } from 'react-native';
+import { View, StyleSheet, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
@@ -80,6 +81,8 @@ export default function MapScreen() {
     const [spawns, setSpawns] = useState<CoinSpawn[]>([]);
     const [totalDistance, setTotalDistance] = useState(0);
     const [pendingFriendsCount, setPendingFriendsCount] = useState(0);
+    const [userAvatarUri, setUserAvatarUri] = useState<string | null>(null);
+    const [userName, setUserName] = useState<string>('Explorador');
 
     const { 
         remoteUsers, 
@@ -97,6 +100,7 @@ export default function MapScreen() {
         latitudeDelta: 0.01, longitudeDelta: 0.01,
         heading: 0,
     });
+    const [mapReady, setMapReady] = useState(false);
 
     const [selectedMember, setSelectedMember] = useState<any>(null);
     const [showMemberDetail, setShowMemberDetail] = useState(false);
@@ -334,6 +338,10 @@ export default function MapScreen() {
         setCoins(c); 
         setLevelData(l); 
         setTotalDistance(d);
+        
+        // Load user avatar
+        if (p?.customImageUri) setUserAvatarUri(p.customImageUri);
+        if (u?.name) setUserName(u.name);
 
         // Buscar Clãs do Usuário
         if (u) {
@@ -370,6 +378,7 @@ export default function MapScreen() {
         const { latitude, longitude } = currentLocation.coords;
         setLocation(prev => ({ ...prev, latitude, longitude }));
         lastLocation.current = { latitude, longitude };
+        setMapReady(true);
 
         const trackingOptions = batterySaver ? {
             accuracy: Location.Accuracy.Balanced,
@@ -421,7 +430,10 @@ export default function MapScreen() {
 
                 if (lastLocation.current) {
                     const dist = calculateDistance(lastLocation.current.latitude, lastLocation.current.longitude, newLat, newLon);
-                    if (dist > 3 && dist < 1000) addDistanceLocal(dist);
+                    if (dist > 3 && dist < 1000) {
+                        addDistanceLocal(dist);
+                        savePathPointLocal(newLat, newLon);
+                    }
                 }
                 lastLocation.current = { latitude: newLat, longitude: newLon };
             }
@@ -606,8 +618,15 @@ export default function MapScreen() {
         <View style={styles.container}>
             <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
             
-            <View style={{ flex: 1 }}>
-                <MapViewLibre region={location} onPress={() => setShowMemberDetail(false)}>
+            <View style={{ flex: 1, backgroundColor: isDarkMode ? '#121218' : '#F7F7FA' }}>
+                {!mapReady ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <Ionicons name="location-outline" size={48} color={colors.primary} style={{ marginBottom: 16 }} />
+                        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>Adquirindo GPS...</Text>
+                        <Text style={{ color: colors.subtext, fontSize: 14 }}>Aguarde enquanto localizamos você</Text>
+                    </View>
+                ) : (
+                    <MapViewLibre region={location} onPress={() => setShowMemberDetail(false)}>
 
                     {/* Pontos Oficiais no Mapa */}
                     {PET_SPOTS.map(spot => (
@@ -647,14 +666,15 @@ export default function MapScreen() {
                         </MapMarkerLibre>
                     ))}
 
-                    {/* Avatar do jogador — estilo 3D Motor */}
+                    {/* Avatar do jogador */}
                     <GameMarker 
                         id="me" 
                         latitude={location.latitude} 
                         longitude={location.longitude} 
                         heading={location.heading || 0}
-                        name={pet?.name || 'Você'}
+                        name={userName}
                         pet={pet || undefined}
+                        avatarUri={userAvatarUri}
                         primaryColor={colors.primary}
                         isMe={true}
                     />
@@ -680,6 +700,7 @@ export default function MapScreen() {
                         )
                     ))}
                 </MapViewLibre>
+                )}
 
                 <View style={[styles.topOverlay, { paddingTop: insets.top }]} pointerEvents="box-none">
                     <View style={styles.topBar}>
@@ -692,8 +713,17 @@ export default function MapScreen() {
                             <Ionicons name="chevron-down" size={14} color="#888" />
                         </Pressable>
 
-                        <Pressable style={styles.hudCircleBtn} onPress={() => router.push({ pathname: '/social', params: { tab: 'perfil' } })}>
-                            <Ionicons name="person" size={20} color="#A78BFF" />
+                        <Pressable 
+                            style={[styles.hudCircleBtn, { overflow: 'hidden', borderWidth: 2, borderColor: colors.primary + '60' }]} 
+                            onPress={() => router.push({ pathname: '/social', params: { tab: 'perfil' } })}
+                        >
+                            {userAvatarUri ? (
+                                <Image source={{ uri: userAvatarUri }} style={{ width: '100%', height: '100%', borderRadius: 14 }} />
+                            ) : pet ? (
+                                <PetPreview species={pet.species} size={24} />
+                            ) : (
+                                <Ionicons name="person" size={20} color="#A78BFF" />
+                            )}
                         </Pressable>
                     </View>
 

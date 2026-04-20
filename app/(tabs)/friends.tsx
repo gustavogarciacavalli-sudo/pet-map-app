@@ -3,7 +3,8 @@ import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, SafeAreaView, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { PetPreview } from '../../components/PetPreview';
 import { ProfileView } from '../../components/ProfileView';
 import { useTheme } from '../../components/ThemeContext';
@@ -67,6 +68,7 @@ export default function SocialScreen() {
     const [userLocationName, setUserLocationName] = useState<string>('Localizando...');
     const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
     const [friendIds, setFriendIds] = useState<string[]>([]);
+    const [confirmedFriends, setConfirmedFriends] = useState<any[]>([]);
     const [isGhostMode, setIsGhostMode] = useState(false);
     const [user, setUser] = useState<any>(null);
     const [pet, setPet] = useState<LocalPet | null>(null);
@@ -90,8 +92,12 @@ export default function SocialScreen() {
             setLikedIds(cloudLikes);
 
             // 1. Amigos da Nuvem
-            const friends = await AuthService.getFriendsCloud(user.id);
+            const friends = await AuthService.getFriendsCloud(loggedUser.id);
             setFriendIds(friends);
+
+            // 1.1 Perfis dos Amigos
+            const friendProfiles = await AuthService.getFriendsProfilesCloud(friends);
+            setConfirmedFriends(friendProfiles);
 
             // 2. Clãs da Nuvem
             const cloudGroups = await AuthService.getGroups();
@@ -452,16 +458,22 @@ export default function SocialScreen() {
                         <Ionicons name="search" size={20} color={colors.subtext} style={{ marginLeft: 16 }} />
                         <TextInput
                             style={[styles.searchInput, { color: colors.text, outlineStyle: 'none' } as any]}
-                            placeholder="Buscar amigos..."
+                            placeholder={
+                                activeSocialSubTab === 'amigos' ? "Buscar amigos..." :
+                                activeSocialSubTab === 'inbox' ? "Buscar solicitações..." :
+                                "Descobrir exploradores..."
+                            }
                             placeholderTextColor={colors.subtext}
                             value={socialSearch}
                             onChangeText={setSocialSearch}
                             autoCapitalize="none"
                             autoCorrect={false}
                         />
-                        <Pressable style={styles.searchActionBtn} onPress={() => setIsAddFriendModalVisible(true)}>
-                            <Ionicons name="person-add" size={18} color="#FFF" />
-                        </Pressable>
+                        {activeSocialSubTab === 'inbox' && (
+                            <Pressable style={styles.searchActionBtn} onPress={() => setIsAddFriendModalVisible(true)}>
+                                <Ionicons name="person-add" size={18} color="#FFF" />
+                            </Pressable>
+                        )}
                     </View>
 
                     {/* SUB TAB BAR SOCIAL */}
@@ -487,8 +499,7 @@ export default function SocialScreen() {
                     >
                         {activeSocialSubTab === 'amigos' ? (
                             <View style={styles.membersSection}>
-                                {[...allMembersMap.values()]
-                                    .filter(m => m.id !== 'me')
+                                {confirmedFriends
                                     .filter(m => m.name.toLowerCase().includes(socialSearch.toLowerCase()))
                                     .sort((a, b) => {
                                         const aLiked = likedIds.includes(a.id);
@@ -590,8 +601,8 @@ export default function SocialScreen() {
                                                     <Text style={[styles.memberLoc, { color: colors.subtext }]}>{member?.location || 'Explorador Próximo'}</Text>
                                                     <Text style={[styles.memberSince, { color: colors.subtext }]}>Wander-ID: {member?.wander_id}</Text>
                                                 </Pressable>
-                                                <Pressable onPress={() => handleOpenChat(member.id, member.name, member.avatar)}>
-                                                    <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.subtext} />
+                                                <Pressable onPress={() => handleSendRequest(member)}>
+                                                    <Ionicons name="person-add" size={20} color="#FFF" style={{ backgroundColor: colors.primary, padding: 8, borderRadius: 12 }} />
                                                 </Pressable>
                                             </View>
                                         );
@@ -830,18 +841,21 @@ export default function SocialScreen() {
                 </SafeAreaView>
             </Modal>
 
-            {/* MODAL: CHAT (Mensagens Efêmeras) */}
+            {/* MODAL: CHAT — Premium */}
             <Modal visible={isChatVisible} animationType="slide">
                 <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-                    <View style={[styles.header, { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+                    {/* Header */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                         <Pressable onPress={() => {
                             setIsChatVisible(false);
                             if (chatSubscription.current) {
                                 supabase.removeChannel(chatSubscription.current);
                                 chatSubscription.current = null;
                             }
-                        }} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Ionicons name="chevron-back" size={24} color={colors.text} />
+                        }} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', alignItems: 'center', justifyContent: 'center' }}>
+                                <Ionicons name="chevron-back" size={20} color={colors.text} />
+                            </View>
                             <Pressable
                                 onPress={() => {
                                     if (chatTargetMember) {
@@ -849,12 +863,12 @@ export default function SocialScreen() {
                                         setIsAvatarZoomVisible(true);
                                     }
                                 }}
-                                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.accent, marginLeft: 10, alignItems: 'center', justifyContent: 'center' }}
+                                style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colors.primary + '15', marginLeft: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.primary + '25' }}
                             >
                                 {chatTarget?.avatar ? (
                                     <Text style={{ fontSize: 16 }}>{chatTarget?.avatar}</Text>
                                 ) : chatTargetMember?.species ? (
-                                    <PetPreview species={chatTargetMember.species} size={16} />
+                                    <PetPreview species={chatTargetMember.species} size={18} />
                                 ) : (
                                     <Ionicons name="person" size={16} color={colors.primary} />
                                 )}
@@ -865,69 +879,85 @@ export default function SocialScreen() {
                                     setIsMemberCardVisible(true);
                                 }
                             }}>
-                                <Text style={[styles.title, { color: colors.text, marginLeft: 10, fontSize: 18 }]}>{chatTarget?.name}</Text>
+                                <Text style={{ color: colors.text, marginLeft: 10, fontSize: 16, fontWeight: '700', letterSpacing: -0.3 }}>{chatTarget?.name}</Text>
                             </Pressable>
                         </Pressable>
-                        <Ionicons name="time-outline" size={18} color={colors.subtext} />
+                        <View style={{ backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                            <Ionicons name="time-outline" size={12} color={colors.subtext} />
+                            <Text style={{ fontSize: 9, color: colors.subtext, fontWeight: '700' }}>1H</Text>
+                        </View>
                     </View>
 
+                    {/* Messages */}
                     <ScrollView
-                        style={{ flex: 1, padding: 20 }}
+                        style={{ flex: 1, paddingHorizontal: 16 }}
                         ref={chatScrollRef}
                         onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
                     >
-                        <View style={{ alignItems: 'center', marginBottom: 20 }}>
-                            <View style={{ backgroundColor: isDarkMode ? '#2A2A36' : '#F0EDFA', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
-                                <Text style={{ fontSize: 10, color: colors.subtext, fontWeight: '700' }}>MENSAGENS EXPIRAM EM 1 HORA</Text>
+                        <View style={{ alignItems: 'center', marginVertical: 20 }}>
+                            <View style={{ backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10 }}>
+                                <Text style={{ fontSize: 10, color: colors.subtext, fontWeight: '700', letterSpacing: 0.5 }}>MENSAGENS EFÊMERAS</Text>
                             </View>
                         </View>
 
                         {chatMessages.length === 0 && (
-                            <Text style={{ textAlign: 'center', color: colors.subtext, marginTop: 40, fontSize: 12 }}>Nenhuma mensagem recente. Diga oi!</Text>
+                            <View style={{ alignItems: 'center', marginTop: 50 }}>
+                                <View style={{ width: 60, height: 60, borderRadius: 20, backgroundColor: colors.primary + '12', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                                    <Ionicons name="chatbubbles-outline" size={28} color={colors.primary} />
+                                </View>
+                                <Text style={{ color: colors.subtext, fontSize: 13, fontWeight: '600' }}>Nenhuma mensagem ainda</Text>
+                                <Text style={{ color: colors.subtext, fontSize: 12, marginTop: 4, opacity: 0.6 }}>Diga oi! 👋</Text>
+                            </View>
                         )}
 
                         {chatMessages.map(msg => (
                             <View key={msg.id} style={{
                                 alignSelf: msg.senderId === 'me' ? 'flex-end' : 'flex-start',
-                                backgroundColor: msg.senderId === 'me' ? colors.primary : (isDarkMode ? '#333340' : '#F2F1F7'),
-                                padding: 12,
-                                borderRadius: 18,
-                                borderBottomRightRadius: msg.senderId === 'me' ? 4 : 18,
-                                borderBottomLeftRadius: msg.senderId === 'me' ? 18 : 4,
-                                marginBottom: 10,
-                                maxWidth: '80%'
+                                backgroundColor: msg.senderId === 'me' ? colors.primary : (isDarkMode ? '#1C1C28' : '#F2F1F7'),
+                                paddingVertical: 10,
+                                paddingHorizontal: 14,
+                                borderRadius: 16,
+                                borderBottomRightRadius: msg.senderId === 'me' ? 4 : 16,
+                                borderBottomLeftRadius: msg.senderId === 'me' ? 16 : 4,
+                                marginBottom: 8,
+                                maxWidth: '78%'
                             }}>
                                 <Text style={{
-                                    color: msg.senderId === 'me' ? '#FFFFFF' : (isDarkMode ? '#F7F7FA' : '#1A1A2E'),
-                                    fontSize: 14
+                                    color: msg.senderId === 'me' ? '#FFFFFF' : (isDarkMode ? '#EEEDF2' : '#1A1A2E'),
+                                    fontSize: 14,
+                                    lineHeight: 20,
+                                    fontWeight: '500'
                                 }}>{msg.text}</Text>
                             </View>
                         ))}
-                        <View style={{ height: 40 }} />
+                        <View style={{ height: 20 }} />
                     </ScrollView>
 
-                    <View style={{ padding: 15, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                    {/* Input Bar */}
+                    <View style={{ paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                         <TextInput
-                            style={[
-                                styles.modalInput,
-                                {
-                                    flex: 1,
-                                    height: 45,
-                                    backgroundColor: isDarkMode ? '#121218' : '#F7F7FA',
-                                    borderColor: colors.border,
-                                    color: colors.text
-                                }
-                            ]}
+                            style={{
+                                flex: 1,
+                                height: 44,
+                                borderRadius: 14,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                backgroundColor: isDarkMode ? '#121218' : '#F7F7FA',
+                                paddingHorizontal: 16,
+                                fontSize: 14,
+                                fontWeight: '500',
+                                color: colors.text,
+                            }}
                             value={chatInput}
                             onChangeText={setChatInput}
-                            placeholder="Enviar mensagem..."
+                            placeholder="Mensagem..."
                             placeholderTextColor={colors.subtext}
                         />
                         <Pressable
                             onPress={handleSendMessage}
-                            style={{ width: 45, height: 45, borderRadius: 23, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}
+                            style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}
                         >
-                            <Ionicons name="send" size={20} color="#FFF" />
+                            <Ionicons name="send" size={18} color="#FFF" />
                         </Pressable>
                     </View>
                 </SafeAreaView>
@@ -935,56 +965,63 @@ export default function SocialScreen() {
 
             {/* MODAL: ZOOM DO AVATAR */}
             <Modal visible={isAvatarZoomVisible} transparent animationType="fade">
-                <Pressable onPress={() => setIsAvatarZoomVisible(false)} style={styles.modalBg}>
-                    <View style={{ padding: 20 }}>
-                        <View style={[styles.avatarZoomCircle, { borderColor: colors.primary, backgroundColor: colors.card }]}>
+                <Pressable onPress={() => setIsAvatarZoomVisible(false)} style={[styles.modalBg, { justifyContent: 'center' }]}>
+                    <View style={{ alignItems: 'center', padding: 20 }}>
+                        <View style={[styles.avatarZoomCircle, { borderColor: colors.primary + '60', backgroundColor: colors.card }]}>
                             {activePreviewMember?.species ? (
                                 <PetPreview species={activePreviewMember.species} size={220} />
                             ) : (
-                                <Ionicons name="person" size={120} color={colors.primary} />
+                                <Ionicons name="person" size={100} color={colors.primary} />
                             )}
                         </View>
-                        <Text style={{ color: '#FFF', textAlign: 'center', marginTop: 20, fontWeight: '700' }}>Toque em qualquer lugar para fechar</Text>
+                        <View style={{ marginTop: 16, backgroundColor: isDarkMode ? '#ffffff0D' : '#0000000A', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
+                            <Text style={{ color: isDarkMode ? '#ffffff80' : '#00000060', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>Toque para fechar</Text>
+                        </View>
                     </View>
                 </Pressable>
             </Modal>
-            {/* MODAL: CARD DE PERFIL DO MEMBRO (Refinado) */}
+            {/* MODAL: CARD DE PERFIL DO MEMBRO — Premium */}
             <Modal visible={isMemberCardVisible} transparent animationType="fade">
-                <Pressable onPress={() => setIsMemberCardVisible(false)} style={styles.modalBg}>
+                <Pressable onPress={() => setIsMemberCardVisible(false)} style={[styles.modalBg, { justifyContent: 'flex-end' }]}>
                     <Pressable style={[styles.profileCard, { backgroundColor: colors.card, borderColor: colors.border, padding: 0, overflow: 'hidden' }]}>
-                        {/* Header com Background Colorido */}
-                        <View style={{ height: 100, backgroundColor: colors.accent, width: '100%' }} />
+                        {/* Handle bar at top */}
+                        <View style={{ paddingTop: 8, paddingBottom: 4, alignItems: 'center' }}>
+                            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+                        </View>
+
+                        {/* Accent strip */}
+                        <View style={{ height: 80, backgroundColor: colors.primary + '15', width: '100%' }} />
                         
-                        <View style={{ padding: 24, marginTop: -50 }}>
+                        <View style={{ padding: 24, marginTop: -40 }}>
                             <View style={styles.profileCardHeader}>
-                                <View style={[styles.cardAvatar, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 4, elevation: 5 }]}>
-                                    <View style={{ width: '100%', height: '100%', borderRadius: 40, overflow: 'hidden' }}>
+                                <View style={[styles.cardAvatar, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 2 }]}>
+                                    <View style={{ width: '100%', height: '100%', borderRadius: 18, overflow: 'hidden' }}>
                                         {activePreviewMember?.species ? (
-                                            <PetPreview species={activePreviewMember.species} size={72} customImageUri={activePreviewMember.avatar} />
+                                            <PetPreview species={activePreviewMember.species} size={64} customImageUri={activePreviewMember.avatar} />
                                         ) : (
-                                            <Ionicons name="person" size={40} color={colors.primary} />
+                                            <Ionicons name="person" size={36} color={colors.primary} />
                                         )}
                                     </View>
                                     <View style={[styles.presenceCircleLarge, { backgroundColor: activePreviewMember?.online ? '#4CAF50' : '#E74C3C', borderColor: colors.card }]} />
                                 </View>
-                                <View style={{ flex: 1, paddingTop: 40 }}>
-                                    <Text style={[styles.cardName, { color: colors.text, fontSize: 22 }]}>{activePreviewMember?.name || 'Explorador'}</Text>
-                                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.subtext }}>#{activePreviewMember?.id?.substring(0, 8) || '?'}</Text>
+                                <View style={{ flex: 1, paddingTop: 30 }}>
+                                    <Text style={[styles.cardName, { color: colors.text }]}>{activePreviewMember?.name || 'Explorador'}</Text>
+                                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.subtext, marginTop: 2 }}>#{activePreviewMember?.id?.substring(0, 8) || '?'}</Text>
                                 </View>
                             </View>
 
-                            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
-                                <View style={{ flex: 1, backgroundColor: isDarkMode ? '#2A2A36' : '#F0EDFA', padding: 12, borderRadius: 16, alignItems: 'center' }}>
-                                    <Text style={{ fontSize: 10, color: colors.subtext, fontWeight: '800' }}>LEVEL</Text>
-                                    <Text style={{ fontSize: 18, fontWeight: '900', color: colors.primary }}>{activePreviewMember?.level || 1}</Text>
+                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                                <View style={{ flex: 1, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', padding: 14, borderRadius: 14, alignItems: 'center' }}>
+                                    <Text style={{ fontSize: 9, color: colors.subtext, fontWeight: '700', letterSpacing: 0.8 }}>LEVEL</Text>
+                                    <Text style={{ fontSize: 20, fontWeight: '800', color: colors.primary, marginTop: 2 }}>{activePreviewMember?.level || 1}</Text>
                                 </View>
-                                <View style={{ flex: 1, backgroundColor: isDarkMode ? '#2A2A36' : '#F0EDFA', padding: 12, borderRadius: 16, alignItems: 'center' }}>
-                                    <Text style={{ fontSize: 10, color: colors.subtext, fontWeight: '800' }}>XP</Text>
-                                    <Text style={{ fontSize: 18, fontWeight: '900', color: colors.primary }}>{activePreviewMember?.xp || 0}</Text>
+                                <View style={{ flex: 1, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', padding: 14, borderRadius: 14, alignItems: 'center' }}>
+                                    <Text style={{ fontSize: 9, color: colors.subtext, fontWeight: '700', letterSpacing: 0.8 }}>XP</Text>
+                                    <Text style={{ fontSize: 20, fontWeight: '800', color: colors.primary, marginTop: 2 }}>{activePreviewMember?.xp || 0}</Text>
                                 </View>
                             </View>
 
-                            <View style={[styles.cardDataRow, { borderColor: colors.border, borderTopWidth: 1, paddingTop: 15 }]}>
+                            <View style={[styles.cardDataRow, { borderColor: colors.border, borderTopWidth: 1, paddingTop: 14 }]}>
                                 <View style={styles.cardDataItem}>
                                     <Ionicons name="location-outline" size={16} color={colors.primary} />
                                     <Text style={[styles.cardDataText, { color: colors.subtext, flex: 1 }]} numberOfLines={1}>
@@ -1001,25 +1038,25 @@ export default function SocialScreen() {
                                     }}
                                     style={[styles.cardBtn, { backgroundColor: colors.primary, flex: 2 }]}
                                 >
-                                    <Ionicons name="chatbubble-outline" size={20} color="#FFF" />
-                                    <Text style={{ color: '#FFF', fontWeight: '800', marginLeft: 8 }}>Chat</Text>
+                                    <Ionicons name="chatbubble-outline" size={18} color="#FFF" />
+                                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>Chat</Text>
                                 </Pressable>
                                 {activeSocialSubTab === 'recomendados' && (
                                     <Pressable
                                         onPress={() => handleRecommend(activePreviewMember.id)}
-                                        style={[styles.cardBtn, { backgroundColor: colors.accent, flex: 2 }]}
+                                        style={[styles.cardBtn, { backgroundColor: colors.primary + '15', flex: 2 }]}
                                     >
-                                        <Ionicons name="share-social" size={20} color={colors.primary} />
-                                        <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 8 }}>Recomendar</Text>
+                                        <Ionicons name="share-social" size={18} color={colors.primary} />
+                                        <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>Recomendar</Text>
                                     </Pressable>
                                 )}
                                 <Pressable
                                     onPress={() => handleToggleLike(activePreviewMember.id)}
-                                    style={[styles.cardBtn, { backgroundColor: likedIds.includes(activePreviewMember?.id) ? colors.primary + '22' : colors.accent, flex: 1 }]}
+                                    style={[styles.cardBtn, { backgroundColor: likedIds.includes(activePreviewMember?.id) ? colors.primary + '18' : (isDarkMode ? '#ffffff08' : '#0000000A'), flex: 1 }]}
                                 >
                                     <Ionicons
                                         name={likedIds.includes(activePreviewMember?.id) ? "heart" : "heart-outline"}
-                                        size={22}
+                                        size={20}
                                         color={colors.primary}
                                     />
                                 </Pressable>
@@ -1029,13 +1066,22 @@ export default function SocialScreen() {
                 </Pressable>
             </Modal>
 
-            {/* MODAL: VERIFICAÇÃO DE SENHA (Privados) */}
-            <Modal visible={isPassModalVisible} transparent animationType="fade">
-                <View style={styles.modalBg}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <Ionicons name="lock-closed" size={40} color={colors.primary} style={{ alignSelf: 'center', marginBottom: 10 }} />
-                        <Text style={[styles.modalTitle, { color: colors.text, textAlign: 'center' }]}>Clã Privado</Text>
-                        <Text style={{ color: colors.subtext, textAlign: 'center', marginBottom: 20 }}>Insira a senha para visualizar e participar deste clã.</Text>
+            {/* MODAL: VERIFICAÇÃO DE SENHA — Bottom Sheet */}
+            <Modal visible={isPassModalVisible} transparent animationType="slide">
+                <View style={[styles.modalBg, { justifyContent: 'flex-end' }]}>
+                    <Pressable style={{ flex: 1 }} onPress={() => { setIsPassModalVisible(false); setPassAttempt(''); }} />
+                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 40 }]}>
+                        {/* Handle bar */}
+                        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20 }} />
+
+                        {/* Icon + Title */}
+                        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '30', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                                <Ionicons name="lock-closed" size={24} color={colors.primary} />
+                            </View>
+                            <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 4 }]}>Clã Privado</Text>
+                            <Text style={{ color: colors.subtext, fontSize: 13, textAlign: 'center' }}>Insira a senha para acessar este clã</Text>
+                        </View>
 
                         <TextInput
                             style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: isDarkMode ? '#121218' : '#F7F7FA' }]}
@@ -1050,7 +1096,7 @@ export default function SocialScreen() {
                             <Pressable style={[styles.modalBtn, { borderColor: colors.border }]} onPress={() => { setIsPassModalVisible(false); setPassAttempt(''); }}>
                                 <Text style={[styles.modalBtnText, { color: colors.text }]}>Voltar</Text>
                             </Pressable>
-                            <Pressable style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleVerifyPassword}>
+                            <Pressable style={[styles.modalBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={handleVerifyPassword}>
                                 <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Acessar</Text>
                             </Pressable>
                         </View>
@@ -1058,11 +1104,22 @@ export default function SocialScreen() {
                 </View>
             </Modal>
 
-            {/* Modal Criar Círculo */}
+            {/* Modal Criar Círculo — Bottom Sheet */}
             <Modal visible={isCreateModalVisible} transparent animationType="slide">
-                <View style={styles.modalBg}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <Text style={[styles.modalTitle, { color: colors.text }]}>Criar Clã</Text>
+                <View style={[styles.modalBg, { justifyContent: 'flex-end' }]}>
+                    <Pressable style={{ flex: 1 }} onPress={() => setIsCreateModalVisible(false)} />
+                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 40 }]}>
+                        {/* Handle bar */}
+                        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20 }} />
+
+                        {/* Icon + Title */}
+                        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '30', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                                <Ionicons name="people" size={24} color={colors.primary} />
+                            </View>
+                            <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 0 }]}>Criar Clã</Text>
+                        </View>
+
                         <TextInput
                             style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: isDarkMode ? '#121218' : '#F7F7FA' }]}
                             value={circleName}
@@ -1071,8 +1128,8 @@ export default function SocialScreen() {
                             placeholderTextColor={colors.subtext}
                         />
 
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
-                            <Text style={{ color: colors.text, fontWeight: '700' }}>Tornar Clã Público</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', padding: 14, borderRadius: 14 }}>
+                            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>Tornar Clã Público</Text>
                             <Switch
                                 value={isPublicNewClan}
                                 onValueChange={setIsPublicNewClan}
@@ -1090,7 +1147,7 @@ export default function SocialScreen() {
                                 placeholderTextColor={colors.subtext}
                             />
                         )}
-                        <Text style={{ color: colors.subtext, fontSize: 11, marginTop: 4 }}>
+                        <Text style={{ color: colors.subtext, fontSize: 11, marginTop: 6, fontWeight: '500' }}>
                             {isPublicNewClan
                                 ? 'Clãs públicos podem ser acessados por qualquer usuário.'
                                 : 'Clãs privados exigem senha para visualização e entrada.'}
@@ -1100,7 +1157,7 @@ export default function SocialScreen() {
                             <Pressable style={[styles.modalBtn, { borderColor: colors.border }]} onPress={() => setIsCreateModalVisible(false)}>
                                 <Text style={[styles.modalBtnText, { color: colors.text }]}>Cancelar</Text>
                             </Pressable>
-                            <Pressable style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleCreateCircle}>
+                            <Pressable style={[styles.modalBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={handleCreateCircle}>
                                 <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Criar</Text>
                             </Pressable>
                         </View>
@@ -1108,11 +1165,23 @@ export default function SocialScreen() {
                 </View>
             </Modal>
 
-            {/* Modal Adicionar Amigo */}
+            {/* Modal Adicionar Amigo — Bottom Sheet */}
             <Modal visible={isAddFriendModalVisible} transparent animationType="slide">
-                <View style={styles.modalBg}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <Text style={[styles.modalTitle, { color: colors.text }]}>Adicionar Amigo</Text>
+                <View style={[styles.modalBg, { justifyContent: 'flex-end' }]}>
+                    <Pressable style={{ flex: 1 }} onPress={() => setIsAddFriendModalVisible(false)} />
+                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 40 }]}>
+                        {/* Handle bar */}
+                        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20 }} />
+
+                        {/* Icon + Title */}
+                        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '30', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                                <Ionicons name="person-add" size={24} color={colors.primary} />
+                            </View>
+                            <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 4 }]}>Adicionar Amigo</Text>
+                            <Text style={{ color: colors.subtext, fontSize: 13 }}>Insira o Wander-ID do seu amigo</Text>
+                        </View>
+
                         <TextInput
                             style={[styles.modalInput, { color: colors.text, borderColor: colors.border, backgroundColor: isDarkMode ? '#121218' : '#F7F7FA' }]}
                             value={friendId}
@@ -1124,7 +1193,7 @@ export default function SocialScreen() {
                             <Pressable style={[styles.modalBtn, { borderColor: colors.border }]} onPress={() => setIsAddFriendModalVisible(false)}>
                                 <Text style={[styles.modalBtnText, { color: colors.text }]}>Cancelar</Text>
                             </Pressable>
-                            <Pressable style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleAddFriend}>
+                            <Pressable style={[styles.modalBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={handleAddFriend}>
                                 <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Enviar</Text>
                             </Pressable>
                         </View>
@@ -1138,81 +1207,96 @@ export default function SocialScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
 
-    // Top Tab Bar
-    topNavRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginTop: 12, marginBottom: 12, gap: 12 },
-    univBackBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
-    topTabBar: { flex: 1, height: 42, flexDirection: 'row', backgroundColor: 'transparent', borderRadius: 21, padding: 3, borderWidth: 1, borderColor: '#33334020' },
-    topTabBtn: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 18 },
+    // ─── Top Tab Bar ───
+    topNavRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginTop: 12, marginBottom: 12, gap: 10 },
+    univBackBtn: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    topTabBar: { flex: 1, height: 44, flexDirection: 'row', borderRadius: 14, padding: 3, borderWidth: 1, borderColor: '#ffffff0D' },
+    topTabBtn: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 11 },
     topTabText: { fontWeight: '700', fontSize: 13 },
 
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12 },
-    title: { fontSize: 24, fontWeight: '800' },
+    title: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
 
-    // Search Bar
-    searchContainer: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginTop: 10, marginBottom: 10, borderRadius: 24, borderWidth: 1, borderColor: '#33334020', padding: 4, paddingLeft: 12 },
-    searchInput: { flex: 1, height: 40, paddingHorizontal: 8, fontSize: 14, fontWeight: '600' },
-    searchActionBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' },
+    // ─── Search Bar ───
+    searchContainer: {
+        flexDirection: 'row', alignItems: 'center',
+        marginHorizontal: 20, marginTop: 10, marginBottom: 10,
+        borderRadius: 14, borderWidth: 1, borderColor: '#ffffff0D',
+        paddingLeft: 14, paddingRight: 4, height: 48,
+    },
+    searchInput: { flex: 1, height: '100%', paddingHorizontal: 8, fontSize: 14, fontWeight: '600' },
+    searchActionBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' },
 
-    // Circle rows
-    circleRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, gap: 14 },
-
-    // Sub Tab Bar Social
-    subTabBar: { flexDirection: 'row', marginBottom: 20, marginTop: 10, justifyContent: 'space-around', alignItems: 'center' },
-    subTabBtn: { paddingHorizontal: 15, paddingVertical: 10, borderRadius: 20, backgroundColor: 'transparent', minWidth: 100, alignItems: 'center' },
+    // ─── Sub Tab Bar ───
+    subTabBar: { flexDirection: 'row', marginBottom: 16, marginTop: 8, justifyContent: 'center', alignItems: 'center', gap: 8, paddingHorizontal: 20 },
+    subTabBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, backgroundColor: 'transparent', minWidth: 90, alignItems: 'center' },
     subTabText: { fontSize: 13, fontWeight: '700' },
 
+    // ─── Circle Rows ───
+    circleRow: {
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 20, paddingVertical: 16,
+        borderBottomWidth: 1, gap: 14,
+    },
     circleAvatars: { flexDirection: 'row', alignItems: 'center' },
-    stackedAvatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+    stackedAvatar: { width: 38, height: 38, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
     countBadge: {},
-    countBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
-    circleName: { flex: 1, fontSize: 15, fontWeight: '600' },
+    countBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
+    circleName: { flex: 1, fontSize: 15, fontWeight: '700' },
 
-    // Action buttons
+    // ─── Actions ───
     circleActions: { flexDirection: 'row', paddingHorizontal: 20, gap: 12, marginTop: 20 },
-    circleActionBtn: { flex: 1, paddingVertical: 14, borderRadius: 28, alignItems: 'center' },
+    circleActionBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
     circleActionText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
 
-    // Share card
-    shareCard: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginTop: 20, padding: 18, borderRadius: 20, borderWidth: 1, gap: 12 },
+    // ─── Share Card ───
+    shareCard: {
+        flexDirection: 'row', alignItems: 'center',
+        marginHorizontal: 20, marginTop: 20,
+        padding: 18, borderRadius: 18, borderWidth: 1, gap: 12,
+    },
     shareTitle: { fontSize: 14, fontWeight: '700' },
-    shareSub: { fontSize: 12, fontWeight: '500', marginTop: 3, opacity: 0.7 },
+    shareSub: { fontSize: 12, fontWeight: '500', marginTop: 3, opacity: 0.6 },
 
-    // Members section
+    // ─── Members Section ───
     membersSection: { marginTop: 4, paddingBottom: 40 },
-    sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1, paddingHorizontal: 20, marginBottom: 8 },
+    sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 1.2, paddingHorizontal: 20, marginBottom: 8, textTransform: 'uppercase' },
     memberRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, gap: 14 },
-    memberAvatar: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+    memberAvatar: {
+        width: 48, height: 48, borderRadius: 16,
+        borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', position: 'relative',
+    },
     batteryMini: { position: 'absolute', bottom: -4, left: -4, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6 },
     batteryMiniText: { color: '#FFF', fontSize: 8, fontWeight: '800' },
     memberInfo: { flex: 1 },
     memberName: { fontSize: 15, fontWeight: '700' },
-    memberLoc: { fontSize: 12, fontWeight: '500', marginTop: 2 },
-    memberSince: { fontSize: 11, fontWeight: '500', marginTop: 1 },
-
-    // Modals
-    modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-    modalContent: { width: '85%', borderRadius: 24, padding: 24, borderWidth: 1 },
-    modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 16 },
-    modalInput: { borderWidth: 1, borderRadius: 16, padding: 14, fontSize: 14 },
-    modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
-    modalBtn: { flex: 1, paddingVertical: 14, borderRadius: 16, alignItems: 'center', borderWidth: 1 },
-    modalBtnText: { fontWeight: '700', fontSize: 14 },
-
+    memberLoc: { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.7 },
+    memberSince: { fontSize: 11, fontWeight: '500', marginTop: 1, opacity: 0.5 },
     memberItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, gap: 14 },
 
-    // Novos estilos de presença (Bolinha do Avatar)
-    presenceCircle: { position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: 8, borderWidth: 2.5, zIndex: 10 },
-    presenceCircleLarge: { position: 'absolute', bottom: 2, right: 2, width: 20, height: 20, borderRadius: 10, borderWidth: 3, zIndex: 10 },
+    // ─── Presence ───
+    presenceCircle: { position: 'absolute', bottom: -1, right: -1, width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, zIndex: 10 },
+    presenceCircleLarge: { position: 'absolute', bottom: 2, right: 2, width: 18, height: 18, borderRadius: 9, borderWidth: 3, zIndex: 10 },
 
-    avatarZoomCircle: { width: 300, height: 300, borderRadius: 150, borderWidth: 4, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', alignSelf: 'center' },
-    profileCard: { width: '90%', borderRadius: 28, padding: 24, borderWidth: 2, elevation: 10 },
+    // ─── Modals ───
+    modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' },
+    modalContent: { width: '88%', borderRadius: 24, padding: 24, borderWidth: 1 },
+    modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 18 },
+    modalInput: { borderWidth: 1, borderRadius: 14, padding: 14, fontSize: 14 },
+    modalActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
+    modalBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', borderWidth: 1 },
+    modalBtnText: { fontWeight: '700', fontSize: 14 },
+
+    // ─── Avatar Zoom / Profile Card ───
+    avatarZoomCircle: { width: 280, height: 280, borderRadius: 140, borderWidth: 3, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', alignSelf: 'center' },
+    profileCard: { width: '90%', borderRadius: 24, padding: 24, borderWidth: 1, elevation: 10 },
     profileCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
-    cardAvatar: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-    cardName: { fontSize: 24, fontWeight: '900' },
+    cardAvatar: { width: 72, height: 72, borderRadius: 20, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+    cardName: { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
     cardStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, alignSelf: 'flex-start' },
     cardDataRow: { borderTopWidth: 1, borderBottomWidth: 1, paddingVertical: 15, marginVertical: 10, gap: 10 },
     cardDataItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     cardDataText: { fontSize: 13, fontWeight: '600' },
-    cardActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
-    cardBtn: { flex: 1, height: 50, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    cardActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
+    cardBtn: { flex: 1, height: 48, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
 });

@@ -43,6 +43,17 @@ CREATE TABLE IF NOT EXISTS public.messages (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 5. Tabela de Recomendações Sociais
+CREATE TABLE IF NOT EXISTS public.recommendations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recommender_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    recommended_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(recommender_id, recommended_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_recommendations_users ON public.recommendations(recommender_id, recommended_id);
+
 -- HABILITAR REALTIME (Opcional, mas recomendado para o mapa e chat)
 -- Execute estas linhas se quiser habilitar o broadcast nativo nessas tabelas
 -- ALTER PUBLICATION supabase_realtime ADD TABLE locations;
@@ -55,3 +66,38 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ghost_mode BOOLEAN DEFAULT 
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS battery_saver BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS push_token TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar TEXT;
+
+-- 6. Configuração de Storage (Balde de Avatares)
+-- A criação de buckets via SQL é restrita no Supabase Dashboard por segurança.
+-- RECOMENDAÇÃO: Crie manualmente o bucket 'avatars' como PUBLIC no Dashboard do Supabase.
+-- Se preferir tentar via SQL Editor (PODE EXIGIR PERMISSÕES EXTRAS):
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true) ON CONFLICT (id) DO NOTHING;
+
+-- Políticas de Segurança para o bucket 'avatars'
+-- IMPORTANTE: Certifique-se de que o bucket se chama 'avatars' em minúsculo.
+
+-- Permite acesso público para leitura das fotos
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Avatar Public Access') THEN
+        CREATE POLICY "Avatar Public Access" ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
+    END IF;
+END $$;
+
+-- Permite que usuários autenticados façam upload de suas próprias fotos
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can upload their own avatars') THEN
+        CREATE POLICY "Users can upload their own avatars" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.role() = 'authenticated');
+    END IF;
+END $$;
+
+-- Permite que usuários atualizem suas próprias fotos
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can update their own avatars') THEN
+        CREATE POLICY "Users can update their own avatars" ON storage.objects FOR UPDATE USING (bucket_id = 'avatars' AND auth.uid() = owner);
+    END IF;
+END $$;
+

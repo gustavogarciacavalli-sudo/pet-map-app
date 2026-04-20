@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
   },
   orbitContainer: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 40 : 20,
+    bottom: Platform.OS === 'ios' ? 40 : 44,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',

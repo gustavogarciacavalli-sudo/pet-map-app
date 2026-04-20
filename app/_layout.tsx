@@ -2,6 +2,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { getCurrentUserLocal } from '../localDatabase';
 import { ThemeProvider } from '../components/ThemeContext';
@@ -50,17 +51,25 @@ export default function RootLayout() {
     const inAuthGroup = segments[0] === '(tabs)';
 
     async function syncAndNavigate() {
-      let currentUser = user;
+      // Re-lê o usuário do AsyncStorage para detectar logout em tempo real
+      const currentUser = await getCurrentUserLocal();
+      setUser(currentUser);
       
       if (!currentUser && inAuthGroup) {
         router.replace('/login');
       } else if (currentUser && segments[0] === 'login') {
-        router.replace('/(tabs)');
+        // Verificar se já passou pela tela de permissões
+        const permsDone = await AsyncStorage.getItem('@wanderpet_permissions_done');
+        if (permsDone === 'true') {
+          router.replace('/(tabs)');
+        } else {
+          router.replace('/permissions');
+        }
       }
     }
 
     syncAndNavigate();
-  }, [user, segments, initializing]);
+  }, [segments, initializing]);
 
   useEffect(() => {
     // Inicializa listeners de notificação
@@ -91,6 +100,7 @@ export default function RootLayout() {
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="login" />
+              <Stack.Screen name="permissions" options={{ animation: 'fade' }} />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="social" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="pet-home" options={{ animation: 'slide_from_right' }} />

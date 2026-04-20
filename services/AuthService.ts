@@ -1,5 +1,12 @@
 import { supabase } from './supabaseConfig';
 import { Platform, LayoutAnimation } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
+
+// Variáveis de memória para os bots (chats e likes locais)
+const mockChats: Record<string, any[]> = {};
+const mockLikes: Set<string> = new Set();
+const botSubscriptions: Record<string, (msg: any) => void> = {};
 
 // Utilitário para validar UUID e evitar erros 22P02 no banco
 export const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -78,6 +85,60 @@ export const AuthService = {
             };
         } catch (error: any) {
             console.error("Erro ao buscar perfil no Supabase:", error);
+            throw error;
+        }
+    },
+
+    /**
+     * Upload de Avatar para o Supabase Storage
+     * Versão robusta usando ArrayBuffer para evitar erro de rede no Android/Expo
+     */
+    uploadAvatar: async (userId: string, uri: string) => {
+        if (!isValidUUID(userId)) return uri; // Permite que modo Offline/Dev funcione usando a imagem local
+        
+        try {
+            // Garante que o Supabase reconhece uma sessão ativa antes de tentar o upload
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                console.error("Sessão Supabase não encontrada durante o upload.");
+                throw new Error("Você precisa estar logado para enviar uma foto.");
+            }
+
+            // 1. Lê o arquivo local como Base64 usando expo-file-system
+            const base64 = await FileSystem.readAsStringAsync(uri, {
+                encoding: 'base64',
+            });
+
+            // 2. Converte Base64 para ArrayBuffer
+            // O Supabase lida muito melhor com ArrayBuffer do que com Blobs puros no React Native
+            const arrayBuffer = decode(base64);
+            
+            const fileExt = uri.split('.').pop() || 'jpg';
+            const fileName = `${userId}_${Date.now()}.${fileExt}`;
+            const filePath = `${fileName}`;
+
+            // 3. Faz o upload para o Supabase
+            const { data, error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(filePath, arrayBuffer, {
+                    contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
+                    upsert: true
+                });
+
+            if (uploadError) throw uploadError;
+
+            // 4. Retorna a URL pública
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(filePath);
+
+            return publicUrl;
+        } catch (error: any) {
+            console.error("=== ERRO UPLOAD AVATAR ===");
+            console.error("Mensagem:", error.message);
+            console.error("Detalhes:", error.details);
+            console.error("Dica:", error.hint);
+            console.error("Stack:", error);
             throw error;
         }
     },
@@ -194,16 +255,36 @@ export const AuthService = {
         if (!isValidUUID(userId)) return;
         try {
             await supabase.from('group_members').upsert([{ group_id: groupId, user_id: userId }]);
-        } catch (error) {
+        } catch (error: any) {
             console.error("Erro ao entrar no clã:", error);
         }
     },
 
     getGroups: async () => {
         try {
-            const { data, error } = await supabase.from('groups').select('*, group_members(user_id)');
-            if (error) throw error;
-            return data;
+            // First, get real data
+            let realGroups: any[] = [];
+            const { data, error } = await supabase.from('groups').select(`
+                id, name, is_public, password, founder_id,
+                group_members(user_id, profiles(id, name, avatar, location, wander_id))
+            `);
+            if (!error && data) realGroups = data;
+
+            // INJECT FAKE BOTS/CLAN FOR TESTING!
+            const fakeClan = {
+                id: 'fake-clan-001',
+                name: 'Exploradores Lendários (Demo)',
+                is_public: true,
+                password: null,
+                founder_id: 'bot-1',
+                group_members: [
+                    { user_id: 'bot-1', profiles: { id: 'bot-1', name: 'Gus', avatar: 'https://i.pravatar.cc/150?u=gus', location: 'Curitiba, BR', wander_id: '#WP-GUS' } },
+                    { user_id: 'bot-2', profiles: { id: 'bot-2', name: 'Aline', avatar: 'https://i.pravatar.cc/150?u=aline', location: 'São Paulo, BR', wander_id: '#WP-ALI' } },
+                    { user_id: 'bot-3', profiles: { id: 'bot-3', name: 'Marcos', avatar: 'https://i.pravatar.cc/150?u=marcos', location: 'Rio de Janeiro, BR', wander_id: '#WP-MAR' } }
+                ]
+            };
+
+            return [...realGroups, fakeClan];
         } catch (error) {
             console.error("Erro ao buscar clãs:", error);
             return [];
@@ -224,28 +305,58 @@ export const AuthService = {
     },
 
     getFriendsCloud: async (userId: string) => {
-        if (!isValidUUID(userId)) return [];
+        if (!isValidUUID(userId)) return ['bot-1', 'bot-2']; // Mock some friends by default
         try {
-            const { data, error } = await supabase.from('friendships')
-                .select('*').eq('status', 'accepted')
-                .or(`user_id1.eq.${userId},user_id2.eq.${userId}`);
+            const { data, error } = await supabase.from('friendships').select('user_id1, user_id2')
+                .or(`user_id1.eq.${userId},user_id2.eq.${userId}`).eq('status', 'accepted');
             if (error) throw error;
-            return data.map(f => f.user_id1 === userId ? f.user_id2 : f.user_id1);
+            const friends = data.map((f: any) => f.user_id1 === userId ? f.user_id2 : f.user_id1);
+            
+            // INJECT FAKE FRIENDS!
+            return [...new Set([...friends, 'bot-1', 'bot-2'])];
         } catch (error) {
-            console.error("Erro ao buscar amigos na nuvem:", error);
-            return [];
+            console.error("Erro ao buscar amigos:", error);
+            return ['bot-1', 'bot-2'];
+        }
+    },
+
+    getFriendsProfilesCloud: async (friendIds: string[]) => {
+        const mockBotProfiles = [
+            { id: 'bot-1', name: 'Gus', avatar: 'https://i.pravatar.cc/150?u=gus', location: 'Curitiba, BR', species: 'puppy', online: true, since: '08:30', wander_id: '#WP-GUS' },
+            { id: 'bot-2', name: 'Aline', avatar: 'https://i.pravatar.cc/150?u=aline', location: 'São Paulo, BR', species: 'cat', online: true, since: '09:15', wander_id: '#WP-ALI' }
+        ];
+
+        const realIds = friendIds.filter(id => isValidUUID(id));
+        const botIdsIncluded = friendIds.filter(id => id.startsWith('bot-'));
+
+        try {
+            let realProfiles: any[] = [];
+            if (realIds.length > 0) {
+                const { data, error } = await supabase.from('profiles').select('*').in('id', realIds);
+                if (!error && data) realProfiles = data;
+            }
+
+            const matchedBots = mockBotProfiles.filter(b => botIdsIncluded.includes(b.id));
+            return [...realProfiles, ...matchedBots];
+        } catch (error) {
+            console.error("Erro ao buscar perfis de amigos:", error);
+            return mockBotProfiles.filter(b => botIdsIncluded.includes(b.id));
         }
     },
 
     getNearbyExplorers: async (userId: string) => {
-        if (!isValidUUID(userId)) return [];
         try {
             const friends = await AuthService.getFriendsCloud(userId);
+            // Filtrar apenas UUIDs válidos para a query do Supabase para evitar erro 22P02
             const excludeIds = [userId, ...friends].filter(id => isValidUUID(id));
+            
             const { data, error } = await supabase.from('profiles').select('*')
                 .not('id', 'in', `(${excludeIds.join(',')})`).limit(6);
+            
             if (error) throw error;
-            return data.map(p => {
+
+            // Filtrar bots manualmente do resultado caso algum tenha escapado (embora não devessem estar no DB)
+            return data.filter(p => !friends.includes(p.id)).map(p => {
                 if (p.wander_id === '#WP-LUNA' && !p.avatar) p.avatar = 'https://i.ibb.co/vzrKxXw/luna-bunny.png';
                 if (p.wander_id === '#WP-REX' && !p.avatar) p.avatar = 'https://i.ibb.co/M9xYyL7/rex-dog.png';
                 if (p.wander_id === '#WP-MIAU' && !p.avatar) p.avatar = 'https://i.ibb.co/L5k6pXN/miau-cat.png';
@@ -258,16 +369,25 @@ export const AuthService = {
     },
 
     getPendingRequestsCloud: async (userId: string) => {
-        if (!isValidUUID(userId)) return [];
+        // INJECT MOCK PENDING REQUEST
+        const mockRequests = [
+            {
+                id: 'mock-req-1',
+                user_id1: 'bot-4',
+                profiles: { name: 'Lucas', avatar: 'https://i.pravatar.cc/150?u=lucas', wander_id: '#WP-LUC' }
+            }
+        ];
+
+        if (!isValidUUID(userId)) return mockRequests;
         try {
             const { data, error } = await supabase.from('friendships')
                 .select('id, user_id1, profiles!friendships_user_id1_fkey(name, avatar, wander_id)')
                 .eq('user_id2', userId).eq('status', 'pending');
             if (error) throw error;
-            return data;
+            return [...data, ...mockRequests];
         } catch (error) {
             console.error("Erro ao buscar solicitações pendentes:", error);
-            return [];
+            return mockRequests;
         }
     },
 
@@ -318,6 +438,10 @@ export const AuthService = {
     },
 
     fetchMessages: async (senderId: string, recipientId: string) => {
+        if (senderId.startsWith('bot-') || recipientId.startsWith('bot-')) {
+            const chatKey = [senderId, recipientId].sort().join('_');
+            return mockChats[chatKey] || [];
+        }
         if (!isValidUUID(senderId) || !isValidUUID(recipientId)) return [];
         try {
             const { data, error } = await supabase.from('messages').select('*')
@@ -332,6 +456,28 @@ export const AuthService = {
     },
 
     sendMessageCloud: async (senderId: string, recipientId: string, text: string) => {
+        if (recipientId.startsWith('bot-') || senderId.startsWith('bot-')) {
+            const chatKey = [senderId, recipientId].sort().join('_');
+            if (!mockChats[chatKey]) mockChats[chatKey] = [];
+            
+            const userMsg = { id: Date.now().toString(), sender_id: senderId, receiver_id: recipientId, text, created_at: new Date().toISOString() };
+            mockChats[chatKey].push(userMsg);
+            
+            const notify = botSubscriptions[`${recipientId}_${senderId}`] || botSubscriptions[`${senderId}_${recipientId}`];
+            if (notify) notify(userMsg);
+
+            // Simular resposta do bot para testar memória!
+            if (recipientId.startsWith('bot-')) {
+                setTimeout(() => {
+                    const botMsg = { id: (Date.now() + 1).toString(), sender_id: recipientId, receiver_id: senderId, text: `Olá! Eu recebi sua mensagem: "${text}". Minha memória está funcionando! 🤖`, created_at: new Date().toISOString() };
+                    mockChats[chatKey].push(botMsg);
+                    const notifyBot = botSubscriptions[`${senderId}_${recipientId}`];
+                    if (notifyBot) notifyBot(botMsg);
+                }, 1000);
+            }
+            return true;
+        }
+
         if (!isValidUUID(senderId) || !isValidUUID(recipientId)) return false;
         try {
             const { error } = await supabase.from('messages').insert([{
@@ -347,6 +493,10 @@ export const AuthService = {
     },
 
     subscribeToMessages: (senderId: string, recipientId: string, onMessage: (msg: any) => void) => {
+        if (recipientId.startsWith('bot-') || senderId.startsWith('bot-')) {
+            botSubscriptions[`${senderId}_${recipientId}`] = onMessage;
+            return { unsubscribe: () => { delete botSubscriptions[`${senderId}_${recipientId}`]; } } as any;
+        }
         return supabase.channel(`chat_${senderId}_${recipientId}`)
             .on('postgres_changes', { 
                 event: 'INSERT', schema: 'public', table: 'messages',
@@ -357,6 +507,16 @@ export const AuthService = {
     },
 
     toggleLikeCloud: async (userId: string, targetId: string) => {
+        if (targetId.startsWith('bot-') || userId.startsWith('bot-')) {
+            const key = `${userId}_${targetId}`;
+            if (mockLikes.has(key)) {
+                mockLikes.delete(key);
+                return false;
+            } else {
+                mockLikes.add(key);
+                return true;
+            }
+        }
         if (!isValidUUID(userId) || !isValidUUID(targetId)) return false;
         try {
             const { data: existing } = await supabase.from('social_likes')
@@ -375,14 +535,15 @@ export const AuthService = {
     },
 
     getLikesCloud: async (userId: string) => {
-        if (!isValidUUID(userId)) return [];
+        const localBotLikes = Array.from(mockLikes).filter(k => k.startsWith(`${userId}_`)).map(k => k.split('_')[1]);
+        if (!isValidUUID(userId)) return localBotLikes;
         try {
             const { data, error } = await supabase.from('social_likes').select('target_id').eq('user_id', userId);
             if (error) throw error;
-            return data.map(l => l.target_id);
+            return [...data.map((l: any) => l.target_id), ...localBotLikes];
         } catch (error) {
             console.error("Erro ao buscar likes:", error);
-            return [];
+            return localBotLikes;
         }
     },
 

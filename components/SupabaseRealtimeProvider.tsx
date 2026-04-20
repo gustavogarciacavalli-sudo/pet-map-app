@@ -53,6 +53,27 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
             setCurrentUser(user);
             setCurrentPet(pet);
 
+            // Obter localização real (ou fallback Curitiba/SP) para colocar os bots ao redor
+            let baseLat = -25.4330;
+            let baseLon = -49.2810;
+            try {
+                const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest });
+                if (loc) {
+                    baseLat = loc.coords.latitude;
+                    baseLon = loc.coords.longitude;
+                }
+            } catch (e) {
+                // Ignore fallback
+            }
+
+            // Injetar bots para testes de mapa
+            const mockBots: Record<string, RemoteUser> = {
+                'bot-1': { id: 'bot-1', name: 'Gus', pet: { species: 'puppy' } as any, location: { latitude: baseLat + 0.0015, longitude: baseLon + 0.001, heading: 45, timestamp: Date.now() }, isOnline: true },
+                'bot-2': { id: 'bot-2', name: 'Aline', pet: { species: 'cat' } as any, location: { latitude: baseLat - 0.001, longitude: baseLon - 0.0015, heading: 120, timestamp: Date.now() }, isOnline: true },
+                'bot-3': { id: 'bot-3', name: 'Marcos', pet: { species: 'bunny' } as any, location: { latitude: baseLat + 0.002, longitude: baseLon - 0.002, heading: 250, timestamp: Date.now() }, isOnline: true },
+            };
+            setRemoteUsers(mockBots);
+
             if (user) {
                 // Configura o canal de Realtime
                 const channel = supabase.channel('world-map', {

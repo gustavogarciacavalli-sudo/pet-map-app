@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Alert, Switch, Modal, TextInput, Image, Clipboard, LayoutAnimation, Platform, UIManager, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert, Switch, Modal, TextInput, Image, Clipboard, LayoutAnimation, Platform, UIManager, Animated, Easing } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { PetPreview } from './PetPreview';
 import { getPetLocal, LocalPet, getCurrentUserLocal, LocalUser, getCoinsLocal, getLevelDataLocal, logoutLocal, updatePetLocal, checkNameAvailabilityLocal, getTotalDistanceLocal, getWeeklyActivityLocal, getPathByDateLocal, generateFakeHistoryLocal, getClaimedQuestsLocal, getSettingsLocal, saveSettingsLocal, UserSettings, updateUserLocal } from '../localDatabase';
@@ -83,6 +84,21 @@ export function ProfileView() {
     const [currentPass, setCurrentPass] = useState('');
     const [newPass, setNewPass] = useState('');
     const [confirmPass, setConfirmPass] = useState('');
+
+    // Estado e animação para o modal de logout
+    const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
+    const logoutModalAnim = useRef(new Animated.Value(0)).current;
+
+    const showLogoutModal = () => {
+        setIsLogoutModalVisible(true);
+        Animated.spring(logoutModalAnim, { toValue: 1, tension: 80, friction: 14, useNativeDriver: true }).start();
+    };
+
+    const hideLogoutModal = () => {
+        Animated.timing(logoutModalAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+            setIsLogoutModalVisible(false);
+        });
+    };
 
     // Estados para Drop-down (Accordion)
     const [isConfigExpanded, setIsConfigExpanded] = useState(true);
@@ -402,56 +418,86 @@ export function ProfileView() {
             return;
         }
 
-        if (user && tempName !== pet?.name) {
-            const isAvailable = await checkNameAvailabilityLocal(tempName, user.id);
-            if (!isAvailable) {
-                Alert.alert("Nome Ocupado", "Este nome já foi clamado por outro explorador.");
-                return;
-            }
-        }
-
-        const petData = { 
-            name: tempName, 
-            species: tempSpecies as any,
-            customImageUri: tempImageUri || undefined 
-        };
-
-        const updated = await updatePetLocal(petData);
-        if (updated) {
-            setPet(updated);
-            
-            // Sincronizar com a nuvem
-            if (user && user.id) {
-                try {
-                    // 1. Atualiza Perfil (Para busca social)
-                    await AuthService.updateProfile(user.id, { 
-                        name: tempName, 
-                        avatar: tempImageUri 
-                    });
-                    
-                    // 2. Sincroniza Pet (Para visualização)
-                    await AuthService.syncPet(user.id, petData);
-                } catch (e) {
-                    console.error("Erro ao sincronizar perfil na nuvem:", e);
+        setLoading(true);
+        try {
+            if (user && tempName !== pet?.name) {
+                const isAvailable = await checkNameAvailabilityLocal(tempName, user.id);
+                if (!isAvailable) {
+                    Alert.alert("Nome Ocupado", "Este nome já foi clamado por outro explorador.");
+                    setLoading(false);
+                    return;
                 }
             }
-            
-            setIsEditModalVisible(false);
-            Alert.alert("Sucesso", "Seu perfil foi atualizado.");
+
+            let finalImageUri = tempImageUri;
+
+            // Se for um URI local (file:// ou content://), fazemos o upload para o Supabase Storage
+            if (tempImageUri && (tempImageUri.startsWith('file://') || tempImageUri.startsWith('content://') || tempImageUri.startsWith('assets-library://'))) {
+                try {
+                    if (!user || !user.id) throw new Error("Usuário não encontrado na sessão local.");
+                    console.log("Iniciando upload do avatar para nuvem...");
+                    finalImageUri = await AuthService.uploadAvatar(user.id, tempImageUri);
+                    console.log("Upload concluído:", finalImageUri);
+                } catch (uploadError: any) {
+                    console.error("Erro no upload do avatar:", uploadError);
+                    Alert.alert("Erro de Upload", "Não foi possível enviar a foto para a nuvem. Verifique sua conexão e login.");
+                }
+            }
+
+            const petData = { 
+                name: tempName, 
+                species: tempSpecies as any,
+                customImageUri: finalImageUri || undefined 
+            };
+
+            const updated = await updatePetLocal(petData);
+            if (updated) {
+                setPet(updated);
+                
+                // Sincronizar com a nuvem
+                if (user && user.id) {
+                    try {
+                        // 1. Atualiza Perfil (Para busca social)
+                        await AuthService.updateProfile(user.id, { 
+                            name: tempName, 
+                            avatar: finalImageUri 
+                        });
+                        
+                        // 2. Sincroniza Pet (Para visualização)
+                        await AuthService.syncPet(user.id, petData);
+                    } catch (e) {
+                        console.error("Erro ao sincronizar perfil na nuvem:", e);
+                    }
+                }
+                
+                setIsEditModalVisible(false);
+                showToast({ message: "Perfil atualizado com sucesso!", type: 'success', icon: 'checkmark-circle' });
+                // Removido Alert.alert para não interromper o fluxo se já temos toast
+            }
+        } catch (error: any) {
+            console.error("Erro ao salvar perfil:", error);
+            Alert.alert("Erro", "Ocorreu um erro ao salvar as alterações.");
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleLogout = () => {
-        Alert.alert('Sair', 'Tem certeza que deseja sair?', [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Sair', style: 'destructive', onPress: async () => { await logoutLocal(); router.replace('/login'); } }
-        ]);
+    const handleLogout = () => showLogoutModal();
+
+    const confirmLogout = async () => {
+        hideLogoutModal();
+        // Aguarda o modal fechar antes de navegar
+        setTimeout(async () => {
+            await AuthService.logout();
+            await logoutLocal();
+            router.replace('/login');
+        }, 220);
     };
 
     const copyToClipboard = () => {
         if (user?.wanderId) {
             Clipboard.setString(user.wanderId);
-            Alert.alert('Copiado', 'Seu Wander-ID foi copiado.');
+            showToast({ message: "Wander-ID Copiado!", type: 'success', icon: 'copy-outline' });
         }
     };
 
@@ -760,47 +806,65 @@ export function ProfileView() {
                 <Text style={[styles.version, { color: colors.subtext }]}>WanderPet v2.0.0</Text>
             </ScrollView>
 
-            {/* Modal Edit */}
+            {/* Modal Edit — Bottom Sheet Style */}
             <Modal visible={isEditModalVisible} animationType="slide" transparent={true}>
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <Text style={[styles.modalTitle, { color: colors.text }]}>Editar Perfil</Text>
+                <View style={[styles.modalOverlay, { justifyContent: 'flex-end', padding: 0 }]}>
+                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 40 }]}>
+                        {/* Handle bar */}
+                        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20 }} />
+
+                        {/* Icon + Title */}
+                        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '30', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                                <Ionicons name="pencil" size={24} color={colors.primary} />
+                            </View>
+                            <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 0 }]}>Editar Perfil</Text>
+                        </View>
+
                         <Text style={styles.inputLabel}>NOME DO EXPLORADOR</Text>
-                        <TextInput style={[styles.input, { color: colors.text, borderColor: colors.border }]} value={tempName} onChangeText={setTempName} />
+                        <TextInput style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: isDarkMode ? '#121218' : '#F7F7FA' }]} value={tempName} onChangeText={setTempName} />
                         
-                        <Text style={[styles.inputLabel, { marginTop: 15 }]}>ESCOLHA SEU AVATAR</Text>
+                        <Text style={[styles.inputLabel, { marginTop: 16 }]}>ESCOLHA SEU AVATAR</Text>
                         <View style={styles.avatarGrid}>
                             {['bunny', 'puppy', 'cat', 'fox', 'parrot', 'wolf'].map(s => (
-                                <Pressable key={s} onPress={() => { setTempSpecies(s as any); setTempImageUri(null); }} style={[styles.avatarOpt, (tempSpecies === s && !tempImageUri) && { borderColor: colors.primary }]}>
-                                    <PetPreview species={s as any} size={40} />
+                                <Pressable key={s} onPress={() => { setTempSpecies(s as any); setTempImageUri(null); }} style={[styles.avatarOpt, (tempSpecies === s && !tempImageUri) && { borderColor: colors.primary, backgroundColor: colors.primary + '12' }]}>
+                                    <PetPreview species={s as any} size={38} />
                                 </Pressable>
                             ))}
                         </View>
 
-                        <Pressable style={[styles.uploadBtn, { borderColor: colors.primary }]} onPress={pickImage}>
+                        <Pressable style={[styles.uploadBtn, { borderColor: colors.primary + '50' }]} onPress={pickImage}>
                             <Ionicons name="image-outline" size={20} color={colors.primary} />
-                            <Text style={{ color: colors.primary, fontWeight: '700' }}>{tempImageUri ? 'Trocar Foto' : 'Usar PNG/Foto Externa'}</Text>
+                            <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>{tempImageUri ? 'Trocar Foto' : 'Usar PNG/Foto Externa'}</Text>
                         </Pressable>
 
                         <View style={styles.modalActions}>
-                            <Pressable style={styles.cancelBtn} onPress={() => setIsEditModalVisible(false)}><Text style={{ color: colors.text }}>Cancelar</Text></Pressable>
-                            <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSaveProfile}><Text style={{ color: '#000', fontWeight: '900' }}>Salvar</Text></Pressable>
+                            <Pressable style={[styles.cancelBtn, { borderWidth: 1, borderColor: colors.border }]} disabled={loading} onPress={() => setIsEditModalVisible(false)}>
+                                <Text style={{ color: colors.text, fontWeight: '700', opacity: loading ? 0.5 : 1 }}>Cancelar</Text>
+                            </Pressable>
+                            <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]} disabled={loading} onPress={handleSaveProfile}>
+                                <Text style={{ color: '#FFF', fontWeight: '800' }}>{loading ? 'Salvando...' : 'Salvar'}</Text>
+                            </Pressable>
                         </View>
                     </View>
                 </View>
             </Modal>
 
-            {/* Modal Diário de Expedição */}
+            {/* Modal Diário de Expedição — Premium */}
             <Modal visible={isDayModalVisible} animationType="fade" transparent={true}>
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.expeditionModal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={[styles.modalOverlay, { justifyContent: 'flex-end', padding: 0 }]}>
+                    <Pressable style={{ flex: 1 }} onPress={() => setIsDayModalVisible(false)} />
+                    <View style={[styles.expeditionModal, { backgroundColor: colors.card, borderColor: colors.border, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 40 }]}>
+                        {/* Handle bar */}
+                        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 16 }} />
+
                         <View style={styles.expeditionHeader}>
                             <View>
                                 <Text style={[styles.expDate, { color: colors.subtext }]}>{selectedDay?.date}</Text>
                                 <Text style={[styles.expTitle, { color: colors.text }]}>Diário de Expedição</Text>
                             </View>
-                            <Pressable onPress={() => setIsDayModalVisible(false)} style={styles.closeExpBtn}>
-                                <Ionicons name="close" size={24} color={colors.text} />
+                            <Pressable onPress={() => setIsDayModalVisible(false)} style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', alignItems: 'center', justifyContent: 'center' }}>
+                                <Ionicons name="close" size={20} color={colors.subtext} />
                             </Pressable>
                         </View>
 
@@ -816,7 +880,7 @@ export function ProfileView() {
                             ) : (
                                 <View style={styles.noPathContent}>
                                     <MaterialCommunityIcons name="map-marker-off" size={40} color={colors.subtext + '44'} />
-                                    <Text style={{color: colors.subtext, fontSize: 12, marginTop: 10}}>Nenhum trajeto registrado</Text>
+                                    <Text style={{color: colors.subtext, fontSize: 12, marginTop: 10, fontWeight: '500'}}>Nenhum trajeto registrado</Text>
                                 </View>
                             )}
                         </View>
@@ -834,54 +898,51 @@ export function ProfileView() {
                         </View>
                         
                         <Pressable style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={() => setIsDayModalVisible(false)}>
-                            <Text style={{ fontWeight: '900' }}>CONFIRMAR</Text>
+                            <Text style={{ fontWeight: '800', color: '#FFF', fontSize: 15 }}>Fechar</Text>
                         </Pressable>
                     </View>
                 </View>
             </Modal>
-            {/* Modal Medalha */}
+            {/* Modal Medalha — Premium */}
             <Modal 
                 visible={!!selectedMedal} 
-                animationType="slide" 
+                animationType="fade" 
                 transparent={true}
                 onRequestClose={() => setSelectedMedal(null)}
             >
-                <View style={[styles.modalOverlay, { paddingHorizontal: 30 }]}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, alignItems: 'center', position: 'relative' }]}>
+                <View style={[styles.modalOverlay, { justifyContent: 'flex-end', padding: 0 }]}>
+                    <Pressable style={{ flex: 1 }} onPress={() => setSelectedMedal(null)} />
+                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, alignItems: 'center', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 40 }]}>
                         {selectedMedal && (
                             <>
-                                <Pressable 
-                                    onPress={() => setSelectedMedal(null)}
-                                    style={{ position: 'absolute', top: 15, right: 15, zIndex: 10, padding: 5 }}
-                                >
-                                    <Ionicons name="close" size={24} color={colors.subtext} />
-                                </Pressable>
+                                {/* Handle bar */}
+                                <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20 }} />
 
-                                <View style={[styles.medalMolde, { width: 80, height: 80, borderRadius: 40, borderWidth: 4, backgroundColor: selectedMedal.color + '22', borderColor: selectedMedal.color, marginBottom: 15 }]}>
-                                    {selectedMedal.icon === 'FontAwesome5' && <FontAwesome5 name={selectedMedal.iconName} size={36} color={selectedMedal.color} />}
-                                    {selectedMedal.icon === 'Ionicons' && <Ionicons name={selectedMedal.iconName as any} size={36} color={selectedMedal.color} />}
-                                    {selectedMedal.icon === 'MaterialCommunityIcons' && <MaterialCommunityIcons name={selectedMedal.iconName as any} size={36} color={selectedMedal.color} />}
+                                <View style={[styles.medalMolde, { width: 72, height: 72, borderRadius: 22, borderWidth: 2, backgroundColor: selectedMedal.color + '15', borderColor: selectedMedal.color + '50', marginBottom: 14 }]}>
+                                    {selectedMedal.icon === 'FontAwesome5' && <FontAwesome5 name={selectedMedal.iconName} size={32} color={selectedMedal.color} />}
+                                    {selectedMedal.icon === 'Ionicons' && <Ionicons name={selectedMedal.iconName as any} size={32} color={selectedMedal.color} />}
+                                    {selectedMedal.icon === 'MaterialCommunityIcons' && <MaterialCommunityIcons name={selectedMedal.iconName as any} size={32} color={selectedMedal.color} />}
                                 </View>
-                                <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 5, fontSize: 24 }]}>
+                                <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center', marginBottom: 6 }}>
                                     {selectedMedal.count > 0 ? `Parabéns, ${selectedMedal.title}!` : `Medalha de ${selectedMedal.title}`}
                                 </Text>
-                                <Text style={{ color: colors.text, fontSize: 13, textAlign: 'center', marginBottom: 15, lineHeight: 20 }}>
+                                <Text style={{ color: colors.subtext, fontSize: 14, textAlign: 'center', marginBottom: 18, lineHeight: 21 }}>
                                     {selectedMedal.count > 0 
                                         ? `Você alcançou a cobiçada Medalha de `
                                         : `Esta é a base para a Medalha de `}
-                                    <Text style={{ fontWeight: '900', color: selectedMedal.color, fontSize: 16 }}>{selectedMedal.tierName}</Text>.
+                                    <Text style={{ fontWeight: '800', color: selectedMedal.color }}>{selectedMedal.tierName}</Text>.
                                 </Text>
-                                <View style={{ backgroundColor: selectedMedal.color + '15', padding: 12, borderRadius: 12, width: '100%', marginBottom: 25, borderWidth: 1, borderColor: selectedMedal.color + '44' }}>
-                                    <Text style={{ color: colors.text, fontSize: 11, textAlign: 'center', fontStyle: 'italic', fontWeight: '600' }}>
+                                <View style={{ backgroundColor: selectedMedal.color + '0C', padding: 14, borderRadius: 14, width: '100%', marginBottom: 20, borderWidth: 1, borderColor: selectedMedal.color + '25' }}>
+                                    <Text style={{ color: colors.text, fontSize: 12, textAlign: 'center', fontStyle: 'italic', fontWeight: '600', lineHeight: 18 }}>
                                         "{getFlavorText(selectedMedal.title, selectedMedal.tierName)}"
                                     </Text>
                                 </View>
-                                <View style={{ backgroundColor: isDarkMode ? '#3D3D3D' : '#F5F5F5', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 16, width: '100%', marginBottom: 25, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}>
-                                    <Text style={{ color: colors.primary, fontSize: 32, fontWeight: '900' }}>{selectedMedal.count}</Text>
-                                    <Text style={{ color: colors.subtext, fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>MISSÕES CONCLUÍDAS</Text>
+                                <View style={{ backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', paddingVertical: 16, paddingHorizontal: 30, borderRadius: 16, width: '100%', marginBottom: 24, alignItems: 'center' }}>
+                                    <Text style={{ color: colors.primary, fontSize: 36, fontWeight: '800' }}>{selectedMedal.count}</Text>
+                                    <Text style={{ color: colors.subtext, fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginTop: 2 }}>MISSÕES CONCLUÍDAS</Text>
                                 </View>
-                                <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary, width: '100%' }]} onPress={() => setSelectedMedal(null)}>
-                                    <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>
+                                <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary, width: '100%', height: 52 }]} onPress={() => setSelectedMedal(null)}>
+                                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>
                                         {selectedMedal.count > 0 ? 'Incrível!' : 'Entendido'}
                                     </Text>
                                 </Pressable>
@@ -891,13 +952,24 @@ export function ProfileView() {
                 </View>
             </Modal>
 
-            {/* Modal Alterar Senha */}
-            <Modal visible={isPasswordModalVisible} animationType="fade" transparent={true}>
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                        <Text style={[styles.modalTitle, { color: colors.text }]}>Alterar Senha</Text>
+            {/* Modal Alterar Senha — Bottom Sheet */}
+            <Modal visible={isPasswordModalVisible} animationType="slide" transparent={true}>
+                <View style={[styles.modalOverlay, { justifyContent: 'flex-end', padding: 0 }]}>
+                    <Pressable style={{ flex: 1 }} onPress={() => { setIsPasswordModalVisible(false); setCurrentPass(''); setNewPass(''); setConfirmPass(''); }} />
+                    <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, paddingBottom: 40 }]}>
+                        {/* Handle bar */}
+                        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20 }} />
+
+                        {/* Icon + Title */}
+                        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: '#FFA00015', borderWidth: 1, borderColor: '#FFA00030', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                                <Ionicons name="key" size={24} color="#FFA000" />
+                            </View>
+                            <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 0 }]}>Alterar Senha</Text>
+                            <Text style={{ color: colors.subtext, fontSize: 13, marginTop: 4 }}>Atualize sua senha de acesso</Text>
+                        </View>
                         
-                        <View style={{ gap: 12 }}>
+                        <View style={{ gap: 14 }}>
                             <View>
                                 <Text style={styles.inputLabel}>SENHA ATUAL</Text>
                                 <TextInput
@@ -946,12 +1018,94 @@ export function ProfileView() {
                                 <Text style={{ color: colors.text, fontWeight: '700' }}>Cancelar</Text>
                             </Pressable>
                             <Pressable style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleUpdatePassword}>
-                                <Text style={{ color: '#000', fontWeight: '900' }}>Salvar</Text>
+                                <Text style={{ color: '#FFF', fontWeight: '800' }}>Salvar</Text>
                             </Pressable>
                         </View>
                     </View>
                 </View>
             </Modal>
+
+            {/* ───── Modal de Logout Premium ───── */}
+            <Modal visible={isLogoutModalVisible} transparent animationType="none" onRequestClose={hideLogoutModal}>
+                <Animated.View
+                    style={[{
+                        flex: 1,
+                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        justifyContent: 'flex-end',
+                        opacity: logoutModalAnim,
+                    }]}
+                >
+                    <Pressable style={{ flex: 1 }} onPress={hideLogoutModal} />
+
+                    <Animated.View style={{
+                        backgroundColor: colors.card,
+                        borderTopLeftRadius: 28,
+                        borderTopRightRadius: 28,
+                        borderTopWidth: 1,
+                        borderLeftWidth: 1,
+                        borderRightWidth: 1,
+                        borderColor: colors.border,
+                        padding: 28,
+                        paddingBottom: 40,
+                        transform: [{
+                            translateY: logoutModalAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [300, 0],
+                            })
+                        }]
+                    }}>
+                        {/* Handle bar */}
+                        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 24 }} />
+
+                        {/* Icon */}
+                        <View style={{
+                            width: 64, height: 64, borderRadius: 20,
+                            backgroundColor: '#FF525218',
+                            borderWidth: 1.5, borderColor: '#FF525230',
+                            alignItems: 'center', justifyContent: 'center',
+                            alignSelf: 'center', marginBottom: 16
+                        }}>
+                            <Ionicons name="log-out-outline" size={30} color="#FF5252" />
+                        </View>
+
+                        {/* Text */}
+                        <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 8 }}>
+                            Sair da conta?
+                        </Text>
+                        <Text style={{ fontSize: 14, color: colors.subtext, textAlign: 'center', lineHeight: 20, marginBottom: 28 }}>
+                            Você será desconectado desta sessão.{'\n'}Suas aventuras continuarão salvas na nuvem.
+                        </Text>
+
+                        {/* Buttons */}
+                        <Pressable
+                            onPress={confirmLogout}
+                            style={{
+                                height: 52, borderRadius: 16,
+                                backgroundColor: '#FF5252',
+                                alignItems: 'center', justifyContent: 'center',
+                                marginBottom: 10,
+                                shadowColor: '#FF5252',
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.3, shadowRadius: 12, elevation: 6
+                            }}
+                        >
+                            <Text style={{ fontSize: 16, fontWeight: '800', color: '#FFF' }}>Sair</Text>
+                        </Pressable>
+
+                        <Pressable
+                            onPress={hideLogoutModal}
+                            style={{
+                                height: 52, borderRadius: 16,
+                                borderWidth: 1.5, borderColor: colors.border,
+                                alignItems: 'center', justifyContent: 'center',
+                            }}
+                        >
+                            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Cancelar</Text>
+                        </Pressable>
+                    </Animated.View>
+                </Animated.View>
+            </Modal>
+
         </View>
     );
 }
@@ -959,82 +1113,92 @@ export function ProfileView() {
 const styles = StyleSheet.create({
     scroll: { padding: 20 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    title: { fontSize: 24, fontWeight: '900' },
+    title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.8 },
     logoutBtn: { padding: 8 },
-    petCard: { borderRadius: 32, padding: 20, alignItems: 'center', borderWidth: 2, elevation: 4 },
-    previewWrapper: { width: 120, height: 120, marginBottom: 15 },
-    avatarCircle: { width: 120, height: 120, borderRadius: 60, borderWidth: 3, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
-    nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 15 },
-    petName: { fontSize: 24, fontWeight: '900' },
-    editBtn: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-    idBadge: { padding: 12, borderRadius: 16, borderWidth: 1, width: '100%' },
+
+    // ─── Pet Card ───
+    petCard: { borderRadius: 24, padding: 24, alignItems: 'center', borderWidth: 1, elevation: 2 },
+    previewWrapper: { width: 110, height: 110, marginBottom: 14 },
+    avatarCircle: { width: 110, height: 110, borderRadius: 36, borderWidth: 2, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
+    nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
+    petName: { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+    editBtn: { width: 32, height: 32, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    idBadge: { padding: 12, borderRadius: 14, borderWidth: 1, width: '100%' },
     idHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
-    idLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-    idValue: { fontSize: 16, fontWeight: '900' },
+    idLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1.2 },
+    idValue: { fontSize: 16, fontWeight: '800' },
     copyBtn: { padding: 4 },
-    adventureStats: { marginTop: 20, borderRadius: 24, padding: 20, borderWidth: 2 },
-    sectionTitle: { fontSize: 12, fontWeight: '900', letterSpacing: 1.2 },
-    statsRow: { flexDirection: 'column', gap: 15 },
-    statBox: { flexDirection: 'row', alignItems: 'center', gap: 15 },
-    statIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    statLabel: { fontSize: 11, fontWeight: '700' },
-    statValue: { fontSize: 16, fontWeight: '900' },
+
+    // ─── Adventure / Timeline ───
+    adventureStats: { marginTop: 16, borderRadius: 20, padding: 18, borderWidth: 1 },
+    sectionTitle: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase' },
+    statsRow: { flexDirection: 'column', gap: 14 },
+    statBox: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    statIcon: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+    statLabel: { fontSize: 11, fontWeight: '600' },
+    statValue: { fontSize: 16, fontWeight: '800' },
     chartContainer: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 35, marginTop: 5 },
-    bar: { width: 8, borderRadius: 2 },
-    metaStats: { marginTop: 15, borderRadius: 24, padding: 20, borderWidth: 2, gap: 15 },
-    metaRow: { flexDirection: 'row', alignItems: 'center', gap: 15 },
-    xpMini: { fontSize: 10, fontWeight: '900' },
-    xpBar: { height: 6, borderRadius: 3, overflow: 'hidden', width: '100%', marginTop: 4 },
-    xpFill: { height: '100%' },
-    optionsGroup: { marginTop: 25, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 5, borderWidth: 2 },
-    optionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
+    bar: { width: 10, borderRadius: 4 },
+
+    // ─── Stats Econômicos ───
+    metaStats: { marginTop: 12, borderRadius: 20, padding: 18, borderWidth: 1, gap: 14 },
+    metaRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    xpMini: { fontSize: 10, fontWeight: '800' },
+    xpBar: { height: 5, borderRadius: 3, overflow: 'hidden', width: '100%', marginTop: 4 },
+    xpFill: { height: '100%', borderRadius: 3 },
+
+    // ─── Settings ───
+    optionsGroup: { marginTop: 20, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 4, borderWidth: 1 },
+    optionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
     optionTitle: { fontSize: 14, fontWeight: '700' },
-    version: { textAlign: 'center', marginTop: 30, fontSize: 11, fontWeight: '700', marginBottom: 50 },
+    version: { textAlign: 'center', marginTop: 30, fontSize: 11, fontWeight: '600', marginBottom: 50, opacity: 0.4 },
 
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
-    modalContent: { borderRadius: 32, padding: 25, borderWidth: 2 },
-    modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 20, textAlign: 'center' },
-    inputLabel: { fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 5 },
-    input: { height: 50, borderRadius: 16, borderWidth: 1, paddingHorizontal: 15, fontSize: 16, fontWeight: '700' },
+    // ─── Edit Modal ───
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', padding: 20 },
+    modalContent: { borderRadius: 24, padding: 24, borderWidth: 1 },
+    modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 20, textAlign: 'center' },
+    inputLabel: { fontSize: 10, fontWeight: '800', color: '#888', marginBottom: 5, letterSpacing: 0.5 },
+    input: { height: 48, borderRadius: 14, borderWidth: 1, paddingHorizontal: 15, fontSize: 16, fontWeight: '700' },
     avatarGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginVertical: 10 },
-    avatarOpt: { width: 55, height: 55, borderRadius: 27, borderWidth: 2, borderColor: 'transparent', justifyContent: 'center', alignItems: 'center' },
-    uploadBtn: { height: 48, borderRadius: 16, borderWidth: 1, borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 15 },
-    modalActions: { flexDirection: 'row', gap: 12, marginTop: 25 },
-    cancelBtn: { flex: 1, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    saveBtn: { flex: 2, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    avatarOpt: { width: 52, height: 52, borderRadius: 16, borderWidth: 2, borderColor: 'transparent', justifyContent: 'center', alignItems: 'center' },
+    uploadBtn: { height: 48, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 14 },
+    modalActions: { flexDirection: 'row', gap: 10, marginTop: 24 },
+    cancelBtn: { flex: 1, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+    saveBtn: { flex: 2, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
 
-    expeditionModal: { width: '100%', borderRadius: 32, padding: 20, borderWidth: 2 },
+    // ─── Expedition Modal ───
+    expeditionModal: { width: '100%', borderRadius: 24, padding: 20, borderWidth: 1 },
     expeditionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
-    expDate: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-    expTitle: { fontSize: 18, fontWeight: '900' },
+    expDate: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
+    expTitle: { fontSize: 18, fontWeight: '800' },
     closeExpBtn: { padding: 4 },
-    miniMapContainer: { width: '100%', height: 250, borderRadius: 24, borderWidth: 2, overflow: 'hidden', marginBottom: 20, backgroundColor: 'rgba(0,0,0,0.05)' },
+    miniMapContainer: { width: '100%', height: 240, borderRadius: 18, borderWidth: 1, overflow: 'hidden', marginBottom: 20, backgroundColor: 'rgba(0,0,0,0.05)' },
     noPathContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    expStats: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 25 },
+    expStats: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 24 },
     expStatItem: { alignItems: 'center' },
-    expStatLabel: { fontSize: 9, fontWeight: '900', marginBottom: 4 },
-    expStatValue: { fontSize: 20, fontWeight: '900' },
-    expDivider: { width: 1, height: 30 },
-    confirmBtn: { height: 55, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-    
-    // Timeline cards (Life360)
-    timelineCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
+    expStatLabel: { fontSize: 9, fontWeight: '800', marginBottom: 4 },
+    expStatValue: { fontSize: 20, fontWeight: '800' },
+    expDivider: { width: 1, height: 28 },
+    confirmBtn: { height: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+
+    // ─── Timeline Cards ───
+    timelineCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden', marginBottom: 10 },
     timelineCardContent: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-    timelinePlace: { fontSize: 16, fontWeight: '700' },
-    timelineTime: { fontSize: 12, fontWeight: '500', marginTop: 4 },
-    timelineDuration: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+    timelinePlace: { fontSize: 15, fontWeight: '700' },
+    timelineTime: { fontSize: 12, fontWeight: '500', marginTop: 3, opacity: 0.6 },
+    timelineDuration: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 },
     timelineDurationText: { fontSize: 11, fontWeight: '600' },
-    timelinePin: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    tripMapPreview: { padding: 20, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, minHeight: 60 },
+    timelinePin: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    tripMapPreview: { padding: 18, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, minHeight: 56 },
     tripRoute: { fontSize: 12, fontWeight: '600' },
     tripStats: { flexDirection: 'row', gap: 12, marginTop: 6 },
     tripStat: { flexDirection: 'row', alignItems: 'center', gap: 3 },
     tripStatText: { fontSize: 11, fontWeight: '600' },
-    
-    // Medals Section
-    medalsSection: { marginTop: 15, borderRadius: 24, padding: 16, borderWidth: 2 },
+
+    // ─── Medals Section ───
+    medalsSection: { marginTop: 12, borderRadius: 20, padding: 16, borderWidth: 1 },
     medalsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, gap: 4 },
     medalItem: { alignItems: 'center', flex: 1 },
-    medalMolde: { width: 50, height: 50, borderRadius: 25, borderWidth: 3, justifyContent: 'center', alignItems: 'center', marginBottom: 8, elevation: 2 },
+    medalMolde: { width: 48, height: 48, borderRadius: 16, borderWidth: 2, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
     medalLabel: { fontSize: 9, fontWeight: '800', textAlign: 'center', flexShrink: 1, letterSpacing: -0.5 }
 });

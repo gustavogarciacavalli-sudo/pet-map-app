@@ -58,6 +58,8 @@ const styles = StyleSheet.create({
     container: {
         alignItems: 'center',
         justifyContent: 'center',
+        width: 80,
+        height: 80,
     },
     labelContainer: {
         backgroundColor: 'rgba(0,0,0,0.7)',
@@ -87,11 +89,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         borderWidth: 3,
         borderColor: '#FFF',
-        elevation: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
+        // NO ELEVATION
     },
     aura: {
         position: 'absolute',

@@ -57,9 +57,10 @@ export const SpotMarker: React.FC<SpotMarkerProps> = ({
 const styles = StyleSheet.create({
     container: {
         alignItems: 'center',
-        justifyContent: 'center',
-        width: 80,
-        height: 80,
+        justifyContent: 'flex-start',
+        width: 140, // Increased bounds for Fabric compat so long text (like 'Clíni Vete 24h') is NOT cut off
+        height: 120, // Increased bounds
+        paddingTop: 10,
     },
     labelContainer: {
         backgroundColor: 'rgba(0,0,0,0.7)',

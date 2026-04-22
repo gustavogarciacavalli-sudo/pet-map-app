@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
-import { View, StyleSheet, Animated, Text, Platform } from 'react-native';
+import { View, StyleSheet, Animated, Text, Platform, Image, ImageSourcePropType } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from './ThemeContext';
 
@@ -7,6 +7,7 @@ interface ToastOptions {
     message: string;
     type?: 'success' | 'error' | 'info';
     icon?: keyof typeof Ionicons.glyphMap;
+    image?: ImageSourcePropType;
 }
 
 interface ToastContextType {
@@ -69,11 +70,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                     ]}
                 >
                     <View style={styles.content}>
-                        <Ionicons 
-                            name={options.icon || (options.type === 'error' ? 'alert-circle' : 'notifications')} 
-                            size={20} 
-                            color={options.type === 'error' ? '#FF5252' : colors.primary} 
-                        />
+                        {options.image ? (
+                            <Image source={options.image} style={styles.toastImage} resizeMode="contain" />
+                        ) : (
+                            <Ionicons 
+                                name={options.icon || (options.type === 'error' ? 'alert-circle' : 'notifications')} 
+                                size={20} 
+                                color={options.type === 'error' ? '#FF5252' : colors.primary} 
+                            />
+                        )}
                         <Text style={[styles.message, { color: colors.text }]}>{options.message}</Text>
                     </View>
                 </Animated.View>
@@ -115,5 +120,11 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '700',
         textAlign: 'center',
+        flex: 1,
+    },
+    toastImage: {
+        width: 28,
+        height: 28,
+        borderRadius: 8,
     }
 });

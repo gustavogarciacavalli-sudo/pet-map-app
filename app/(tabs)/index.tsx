@@ -607,7 +607,7 @@ export default function MapScreen() {
             Animated.timing(dropdownAnim, {
                 toValue: 1,
                 duration: 250,
-                useNativeDriver: true
+                useNativeDriver: false
             }).start();
         } else {
             dropdownAnim.setValue(0);
@@ -649,19 +649,17 @@ export default function MapScreen() {
                             coordinate={[t.lon, t.lat]}
                             onPress={() => collectTreasure(t)}
                         >
-                            <View style={{ 
-                                backgroundColor: t.type === 'gem' ? '#7AABE0' : '#FFD700', 
-                                padding: 6, 
-                                borderRadius: 20, 
-                                borderWidth: 2, 
-                                borderColor: '#FFF',
-                                shadowColor: "#000",
-                                shadowOffset: { width: 0, height: 4 },
-                                shadowOpacity: 0.3,
-                                shadowRadius: 4,
-                                elevation: 8
-                            }}>
-                                <Ionicons name={t.type === 'gem' ? "diamond" : "gift"} size={24} color="#FFF" />
+                            <View style={{ width: 60, height: 60, alignItems: 'center', justifyContent: 'center' }}>
+                                <View style={{ 
+                                    backgroundColor: t.type === 'gem' ? '#7AABE0' : '#FFD700', 
+                                    padding: 6, 
+                                    borderRadius: 20, 
+                                    borderWidth: 2, 
+                                    borderColor: '#FFF',
+                                    // Removed Fabric-incompatible Marker shadows & elevations!
+                                }}>
+                                    <Ionicons name={t.type === 'gem' ? "diamond" : "gift"} size={24} color="#FFF" />
+                                </View>
                             </View>
                         </MapMarkerLibre>
                     ))}

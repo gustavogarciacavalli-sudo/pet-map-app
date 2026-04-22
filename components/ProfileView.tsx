@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert, Switch, Modal, TextInput, Image, Clipboard, LayoutAnimation, Platform, UIManager, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Alert, Switch, Modal, TextInput, Image, Clipboard, LayoutAnimation, Platform, UIManager, Animated, Easing, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { PetPreview } from './PetPreview';
@@ -91,11 +91,11 @@ export function ProfileView() {
 
     const showLogoutModal = () => {
         setIsLogoutModalVisible(true);
-        Animated.spring(logoutModalAnim, { toValue: 1, tension: 80, friction: 14, useNativeDriver: true }).start();
+        Animated.spring(logoutModalAnim, { toValue: 1, tension: 80, friction: 14, useNativeDriver: false }).start();
     };
 
     const hideLogoutModal = () => {
-        Animated.timing(logoutModalAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+        Animated.timing(logoutModalAnim, { toValue: 0, duration: 200, useNativeDriver: false }).start(() => {
             setIsLogoutModalVisible(false);
         });
     };
@@ -119,7 +119,7 @@ export function ProfileView() {
         Animated.timing(configAnim, {
             toValue,
             duration: 300,
-            useNativeDriver: true
+            useNativeDriver: false
         }).start();
 
         // Expansão (Altura e Opacidade)
@@ -140,7 +140,7 @@ export function ProfileView() {
         Animated.timing(securityAnim, {
             toValue,
             duration: 300,
-            useNativeDriver: true
+            useNativeDriver: false
         }).start();
 
         // Expansão
@@ -209,11 +209,12 @@ export function ProfileView() {
             activity = await getWeeklyActivityLocal();
         }
         
-        // Calcular Medalhas
-        const allQuests = [...MAIN_QUESTS, ...DAILY_QUESTS, ...WEEKLY_QUESTS, ...MONTHLY_QUESTS];
+        // Calcular Medalhas (Inclui todas as categorias: Principais, Diárias, Semanais e Mensais)
+        const allPossibleQuests = [...MAIN_QUESTS, ...DAILY_QUESTS, ...WEEKLY_QUESTS, ...MONTHLY_QUESTS];
         let counts = { caminhada: 0, social: 0, clas: 0, colecao: 0 };
+        
         claimed.forEach(id => {
-            const q = allQuests.find(q => q.id === id);
+            const q = allPossibleQuests.find(quest => quest.id === id);
             if (q) {
                 if (q.goalType === 'distance') counts.caminhada++;
                 else if (q.goalType === 'friends' || q.goalType === 'profile_pic') counts.social++;
@@ -275,13 +276,14 @@ export function ProfileView() {
                 showToast({ 
                     message: "Modo Fantasma Ativado!", 
                     type: 'success', 
-                    icon: 'eye-off' 
+                    icon: 'eye-off-outline',
+                    image: require('../assets/images/ghost-icon.png')
                 });
             } else {
                 showToast({ 
                     message: "Modo Fantasma Desativado!", 
                     type: 'info', 
-                    icon: 'eye' 
+                    icon: 'eye-outline' 
                 });
             }
         }
@@ -358,6 +360,21 @@ export function ProfileView() {
             load();
         }, [])
     );
+    
+    // Atualização em tempo real do mural de medalhas e estatísticas
+    React.useEffect(() => {
+        const statsSub = DeviceEventEmitter.addListener('statsUpdated', () => {
+             load();
+        });
+        const claimSub = DeviceEventEmitter.addListener('questClaimed', () => {
+             load();
+        });
+
+        return () => {
+            statsSub.remove();
+            claimSub.remove();
+        };
+    }, []);
 
     // Estados para Edição
     const [isEditModalVisible, setIsEditModalVisible] = useState(false);
@@ -696,7 +713,7 @@ export function ProfileView() {
 
                         <View style={styles.optionItem}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                <Image source={require('../assets/images/ghost-icon.png')} style={{ width: 22, height: 22, opacity: userSettings.ghostMode ? 1 : 0.4 }} resizeMode="contain" />
+                                <Ionicons name={userSettings.ghostMode ? 'eye-off' : 'eye-off-outline'} size={20} color={userSettings.ghostMode ? '#A78BFF' : colors.subtext} />
                                 <View>
                                     <Text style={[styles.optionTitle, { color: colors.text }]}>Modo Fantasma</Text>
                                     <Text style={{ fontSize: 9, color: colors.subtext, marginTop: 2 }}>Ocultar localização de amigos</Text>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Animated, Easing, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5, MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { getCoinsLocal, saveCoinsLocal, addXPLocal, getLevelDataLocal, getTotalDistanceLocal, getClaimedQuestsLocal, claimQuestLocal, getWeeklyActivityLocal, getPetLocal, getSpentCoinsLocal, getCurrentUserLocal } from '../../localDatabase';
@@ -52,23 +52,28 @@ function QuestCard({ quest, progress, isClaimed, isCompleted, onClaim, colors, i
     const glowAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
+        let loop: Animated.CompositeAnimation | null = null;
         if (isCompleted && !isClaimed) {
-            Animated.loop(
+            loop = Animated.loop(
                 Animated.sequence([
                     Animated.timing(glowAnim, { toValue: 1, duration: 1200, useNativeDriver: false }),
                     Animated.timing(glowAnim, { toValue: 0, duration: 1200, useNativeDriver: false }),
                 ])
-            ).start();
+            );
+            loop.start();
+        } else {
+            glowAnim.setValue(0);
         }
+        return () => loop?.stop();
     }, [isCompleted, isClaimed]);
 
     const onPressIn = () => {
         if (isCompleted && !isClaimed) {
-            Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, tension: 300, friction: 20 }).start();
+            Animated.spring(scale, { toValue: 0.97, useNativeDriver: false, tension: 300, friction: 20 }).start();
         }
     };
     const onPressOut = () => {
-        Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 300, friction: 20 }).start();
+        Animated.spring(scale, { toValue: 1, useNativeDriver: false, tension: 300, friction: 20 }).start();
     };
 
     const claimableBorderColor = glowAnim.interpolate({
@@ -172,11 +177,31 @@ export default function QuestsScreen() {
         React.useCallback(() => {
             loadStats();
             Animated.parallel([
-                Animated.timing(fadeIn, { toValue: 1, duration: 500, easing: Easing.out(Easing.exp), useNativeDriver: true }),
-                Animated.spring(slideUp, { toValue: 0, tension: 80, friction: 12, useNativeDriver: true }),
+                Animated.timing(fadeIn, { toValue: 1, duration: 500, easing: Easing.out(Easing.exp), useNativeDriver: false }),
+                Animated.spring(slideUp, { toValue: 0, tension: 80, friction: 12, useNativeDriver: false }),
             ]).start();
+            
+            return () => {
+                fadeIn.setValue(0);
+                slideUp.setValue(30);
+            };
         }, [])
     );
+    
+    // Escutar atualizações em tempo real (GPS, Moedas, Outras missões resgatadas)
+    useEffect(() => {
+        const statsSub = DeviceEventEmitter.addListener('statsUpdated', () => {
+            loadStats();
+        });
+        const claimSub = DeviceEventEmitter.addListener('questClaimed', () => {
+            loadStats();
+        });
+
+        return () => {
+            statsSub.remove();
+            claimSub.remove();
+        };
+    }, []);
 
     const loadStats = async () => {
         const coins = await getCoinsLocal();

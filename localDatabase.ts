@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DeviceEventEmitter } from 'react-native';
 import { AuthService } from './services/AuthService';
 
 const USERS_KEY = '@wanderpet_users';
@@ -127,6 +128,7 @@ export const getCoinsLocal = async (): Promise<number> => {
 
 export const saveCoinsLocal = async (amount: number): Promise<void> => {
     await AsyncStorage.setItem(COINS_KEY, amount.toString());
+    DeviceEventEmitter.emit('statsUpdated', { coins: amount });
     
     // Sync Cloud
     const user = await getCurrentUserLocal();
@@ -191,6 +193,7 @@ export const addXPLocal = async (amount: number): Promise<{ xp: number, level: n
         AuthService.syncStats(user.id, { xp, level });
     }
 
+    DeviceEventEmitter.emit('statsUpdated', { xp, level });
     return { xp, level, leveledUp };
 };
 
@@ -436,6 +439,7 @@ export const addDistanceLocal = async (meters: number): Promise<number> => {
     const dailyDist = dailyDistStr ? parseFloat(dailyDistStr) : 0;
     await AsyncStorage.setItem(dailyKey, (dailyDist + meters).toString());
 
+    DeviceEventEmitter.emit('statsUpdated', { distance: next });
     return next;
 };
 
@@ -561,6 +565,7 @@ export const claimQuestLocal = async (questId: string): Promise<void> => {
     if (!claimed.includes(questId)) {
         claimed.push(questId);
         await AsyncStorage.setItem(QUESTS_CLAIMED_KEY, JSON.stringify(claimed));
+        DeviceEventEmitter.emit('questClaimed', { questId });
         
         // Sincronizar com a nuvem
         const user = await getCurrentUserLocal();

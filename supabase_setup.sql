@@ -68,6 +68,27 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN 
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS push_token TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar TEXT;
 
+-- 5.1 Garante a unicidade absoluta no nível do motor do banco de dados e cria índice para buscas ultrarrápidas
+ALTER TABLE public.profiles ADD CONSTRAINT unique_wander_id UNIQUE (wander_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_wander_id ON public.profiles(wander_id);
+
+-- 5.2 Torna o Wander-ID imutável (não pode ser alterado após a criação)
+CREATE OR REPLACE FUNCTION public.check_wander_id_immutable()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.wander_id IS DISTINCT FROM OLD.wander_id THEN
+        RAISE EXCEPTION 'A coluna wander_id é imutável e não pode ser alterada.';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS tr_wander_id_immutable ON public.profiles;
+CREATE TRIGGER tr_wander_id_immutable
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION public.check_wander_id_immutable();
+
 -- 6. Configuração de Storage (Balde de Avatares)
 -- A criação de buckets via SQL é restrita no Supabase Dashboard por segurança.
 -- RECOMENDAÇÃO: Crie manualmente o bucket 'avatars' como PUBLIC no Dashboard do Supabase.

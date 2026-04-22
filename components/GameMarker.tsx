@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Text, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Text, Image, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { MapMarkerLibre } from './MapViewLibre';
 import { LocalPet } from '@/localDatabase';
 
@@ -28,79 +29,57 @@ export const GameMarker: React.FC<GameMarkerProps> = ({
     avatarUri,
     onPress 
 }) => {
-    // Triggers a re-render to force react-native-maps to redraw the marker on Android once the remote image loads.
     const [imageLoaded, setImageLoaded] = useState(false);
-
-    const getAvatarEmoji = () => {
-        if (!pet) return '👤';
-        switch (pet.species) {
-            case 'bunny': return '🐰';
-            case 'puppy': return '🐶';
-            case 'cat': return '🐱';
-            case 'sheep': return '🐑';
-            case 'mouse': return '🐭';
-            case 'snake': return '🐍';
-            case 'fox': return '🦊';
-            case 'parrot': return '🦜';
-            case 'frog': return '🐸';
-            case 'cockroach': return '🪳';
-            case 'wolf': return '🐺';
-            case 'raccoon': return '🦝';
-            case 'bear': return '🐻';
-            default: return '🐾';
-        }
-    };
-
-    // Determine which image to show: user avatar photo > pet custom image > emoji
+    
+    // In React Native New Architecture (Fabric) + Expo SDK 52, react-native-maps markers
+    // MUST NOT use Animated components or complex bounds, otherwise they disappear or clip.
+    // They also require explicitly scaled container sizes to not crop their contents.
+    
     const imageUri = avatarUri || pet?.customImageUri;
+    const hasImage = !!imageUri;
 
+    // Use pure numbers to guarantee Fabric's strict rendering tree doesn't crash on Android
     return (
-        <MapMarkerLibre id={id} coordinate={[longitude, latitude]} onPress={onPress}>
-            {/* explicit width/height prevents collapsing on Android */}
-            <View style={styles.container}>
-                {/* Direction cone - styled like a light projection */}
-                <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-                    <View style={{ transform: [{ rotate: `${heading}deg` }] }}>
-                        {/* The wrapper shifts the cone so its point touches the avatar center exactly */}
-                        <View style={{ transform: [{ translateY: -36 }] }}> 
-                            <View style={[
-                                styles.lightCone,
-                                { borderTopColor: isMe ? primaryColor + '50' : '#FFFFFF40' }
-                            ]} />
-                        </View>
+        <MapMarkerLibre 
+            id={id} 
+            coordinate={[longitude, latitude]} 
+            onPress={onPress}
+        >
+            <View style={styles.fabricSafeContainer}>
+                
+                {/* Cone of Light using stacked basic Views (No SVG, No Transforms OUTSIDE bounds) */}
+                <View style={[styles.coneRotator, { transform: [{ rotate: `${heading || 0}deg` }] }]}>
+                    <View style={styles.coneOffset}>
+                        <View style={[styles.coneShape, { borderTopWidth: 60, borderLeftWidth: 32, borderRightWidth: 32, borderTopColor: primaryColor + '2A' }]} />
+                        <View style={[styles.coneShape, { borderTopWidth: 44, borderLeftWidth: 20, borderRightWidth: 20, borderTopColor: primaryColor + '40', position: 'absolute', bottom: 0 }]} />
+                        <View style={[styles.coneShape, { borderTopWidth: 28, borderLeftWidth: 10, borderRightWidth: 10, borderTopColor: primaryColor + '70', position: 'absolute', bottom: 0 }]} />
                     </View>
                 </View>
 
-                {/* Pulse ring for "me" */}
-                {isMe && (
-                    <View style={[styles.pulseRing, { borderColor: primaryColor + '40' }]} />
-                )}
+                {/* Outer Safe Background Ring */}
+                <View style={[styles.glowRing, { backgroundColor: primaryColor + '20' }]} />
 
-                {/* Avatar Container */}
-                <View style={[
-                    styles.avatarOuter,
-                    { borderColor: isMe ? primaryColor : '#FFFFFF90' }
-                ]}>
+                {/* Avatar Component */}
+                <View style={[styles.avatarOuter, { borderColor: isMe ? primaryColor : '#FFFFFF90' }]}>
                     <View style={[styles.avatarInner, { backgroundColor: isMe ? '#1A1A2E' : '#2C2C36' }]}>
                         {imageUri ? (
                             <Image 
                                 source={{ uri: imageUri }} 
                                 style={styles.avatarImage} 
                                 onLoad={() => setImageLoaded(true)}
-                                // Key forces redraw if URI changes
-                                key={imageUri + (imageLoaded ? 'loaded' : 'loading')} 
+                                key={imageUri + (imageLoaded ? 'loaded' : 'loading')}
+                                fadeDuration={0} // Disable react-native image fade (often breaks inside markers)
                             />
                         ) : (
-                            <Text style={styles.emoji}>{getAvatarEmoji()}</Text>
+                            <View style={[styles.personIconBg, { backgroundColor: isMe ? primaryColor + '20' : '#FFFFFF20' }]}>
+                                <Ionicons name={isMe ? "person" : "person-outline"} size={22} color={isMe ? primaryColor : '#FFFFFFCC'} />
+                            </View>
                         )}
                     </View>
                 </View>
 
                 {/* Name Tag */}
-                <View style={[
-                    styles.nameTag,
-                    { backgroundColor: isMe ? primaryColor : '#1A1A2ECC' }
-                ]}>
+                <View style={[styles.nameTag, { backgroundColor: isMe ? primaryColor : '#1A1A2ECC' }]}>
                     <Text style={styles.nameText} numberOfLines={1}>{name || 'Explorador'}</Text>
                 </View>
             </View>
@@ -109,43 +88,51 @@ export const GameMarker: React.FC<GameMarkerProps> = ({
 };
 
 const styles = StyleSheet.create({
-    container: {
+    fabricSafeContainer: {
+        width: 140, // Strict, large explicit bounds prevent Fabric from aggressively clipping
+        height: 180, 
         alignItems: 'center',
-        justifyContent: 'center',
-        width: 120,
-        height: 120,
+        justifyContent: 'flex-start',
+        paddingTop: 10, // Gives top clearance for rotation
     },
-    // Direction cone
-    lightCone: {
+    coneRotator: {
+        width: 80,
+        height: 80,
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        marginBottom: -30, // Pulls the avatar OVER the base of the cone (safe inside container bounds)
+        zIndex: 1,
+    },
+    coneOffset: {
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        transform: [{ translateY: -15 }], // Nudges only inside its rotator box
+    },
+    coneShape: {
         width: 0,
         height: 0,
-        backgroundColor: 'transparent',
         borderStyle: 'solid',
-        borderLeftWidth: 26,
-        borderRightWidth: 26,
-        borderTopWidth: 55, // Slightly longer
         borderLeftColor: 'transparent',
         borderRightColor: 'transparent',
+        backgroundColor: 'transparent',
     },
-    // Pulse
-    pulseRing: {
+    glowRing: {
+        width: 58,
+        height: 58,
+        borderRadius: 29,
         position: 'absolute',
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        borderWidth: 3,
+        top: 60, // Calculated explicitly
+        zIndex: 2,
     },
-    // Avatar
     avatarOuter: {
         width: 48,
         height: 48,
-        borderRadius: 24, // Use direct squircle approximation or round
+        borderRadius: 24,
         borderWidth: 2.5,
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 5,
+        zIndex: 3,
         backgroundColor: '#1A1A2E',
-        // NO ELEVATION OR SHADOWS! Android maps crash/hide markers with elevations
     },
     avatarInner: {
         width: 42,
@@ -160,22 +147,24 @@ const styles = StyleSheet.create({
         height: '100%',
         borderRadius: 21,
     },
-    emoji: {
-        fontSize: 22,
+    personIconBg: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 21,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    // Name
     nameTag: {
-        paddingHorizontal: 10,
-        paddingVertical: 3,
+        paddingHorizontal: 12,
+        paddingVertical: 4,
         borderRadius: 8,
-        marginTop: 4,
-        zIndex: 5,
-        // NO ELEVATION
+        marginTop: 6,
+        zIndex: 4,
     },
     nameText: {
         color: '#FFF',
         fontSize: 10,
-        fontWeight: '700',
+        fontWeight: '800',
         letterSpacing: -0.2,
     },
 });

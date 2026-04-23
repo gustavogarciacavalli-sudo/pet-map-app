@@ -39,6 +39,8 @@ export interface LocalUser {
     resetTokenExpiry?: number;
     wanderId: string;
     name?: string;
+    avatar_url?: string | null;
+    imageUri?: string | null;
 }
 
 export interface LocalPet {

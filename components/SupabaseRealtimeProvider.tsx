@@ -15,6 +15,7 @@ interface RemoteUser {
     name: string;
     pet: LocalPet | null;
     location: UserLocation | null;
+    imageUri?: string | null;
     isOnline: boolean;
 }
 
@@ -68,9 +69,10 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
 
             // Injetar bots para testes de mapa
             const mockBots: Record<string, RemoteUser> = {
-                'bot-1': { id: 'bot-1', name: 'Gus', pet: { species: 'puppy' } as any, location: { latitude: baseLat + 0.0015, longitude: baseLon + 0.001, heading: 45, timestamp: Date.now() }, isOnline: true },
-                'bot-2': { id: 'bot-2', name: 'Aline', pet: { species: 'cat' } as any, location: { latitude: baseLat - 0.001, longitude: baseLon - 0.0015, heading: 120, timestamp: Date.now() }, isOnline: true },
-                'bot-3': { id: 'bot-3', name: 'Marcos', pet: { species: 'bunny' } as any, location: { latitude: baseLat + 0.002, longitude: baseLon - 0.002, heading: 250, timestamp: Date.now() }, isOnline: true },
+                'bot-1': { id: 'bot-1', name: 'Gus', pet: { species: 'puppy' } as any, location: { latitude: baseLat + 0.0015, longitude: baseLon + 0.001, heading: 45, timestamp: Date.now() }, imageUri: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop', isOnline: true },
+                'bot-2': { id: 'bot-2', name: 'Aline', pet: { species: 'cat' } as any, location: { latitude: baseLat - 0.001, longitude: baseLon - 0.0025, heading: 120, timestamp: Date.now() }, imageUri: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop', isOnline: true },
+                'bot-3': { id: 'bot-3', name: 'Marcos', pet: { species: 'bunny' } as any, location: { latitude: baseLat + 0.003, longitude: baseLon - 0.002, heading: 250, timestamp: Date.now() }, imageUri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop', isOnline: true },
+                'bot-4': { id: 'bot-4', name: 'Bia', pet: { species: 'fox' } as any, location: { latitude: baseLat - 0.002, longitude: baseLon + 0.003, heading: 180, timestamp: Date.now() }, imageUri: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop', isOnline: true },
             };
             setRemoteUsers(mockBots);
 
@@ -96,6 +98,7 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
                                 name: presenceInfo.name || 'Explorador',
                                 pet: presenceInfo.pet || null,
                                 location: presenceInfo.location || null,
+                                imageUri: presenceInfo.imageUri || null,
                                 isOnline: true
                             };
                         });
@@ -110,6 +113,7 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
                                 [payload.userId]: {
                                     ...prev[payload.userId],
                                     location: payload.location,
+                                    imageUri: payload.imageUri || prev[payload.userId].imageUri,
                                     isOnline: true
                                 }
                             };
@@ -129,6 +133,7 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
                                 id: user.id,
                                 name: user.name || user.email,
                                 pet: pet,
+                                imageUri: user.avatar_url || user.imageUri || null,
                                 online_at: new Date().toISOString(),
                             });
                         }

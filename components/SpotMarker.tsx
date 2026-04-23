@@ -62,15 +62,17 @@ export const SpotMarker: React.FC<SpotMarkerProps> = (props) => {
     const { registerMarker, unregisterMarker } = useMarkerCapture();
     const [capturedUri, setCapturedUri] = useState<string | null>(null);
     
-    // Animação de Pop In
-    const scaleAnim = useRef(new Animated.Value(0)).current;
+    // Lógica de Pop-In Orgânico (Brotamento)
+    const morphAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        Animated.spring(scaleAnim, {
+        // Reiniciar e disparar animação de brotamento
+        morphAnim.setValue(0);
+        Animated.spring(morphAnim, {
             toValue: 1,
-            useNativeDriver: true,
-            tension: 50,
-            friction: 7
+            tension: 30, // Mais suave para locais
+            friction: 6,
+            useNativeDriver: true
         }).start();
 
         if (Platform.OS === 'android') {
@@ -99,7 +101,19 @@ export const SpotMarker: React.FC<SpotMarkerProps> = (props) => {
             anchor={{ x: 0.5, y: 1 }}
             icon={icon as any}
         >
-            <Animated.View style={{ transform: [{ scale: scaleAnim }], opacity: scaleAnim }}>
+            <Animated.View style={{ 
+                transform: [
+                    { scale: morphAnim },
+                    { translateY: morphAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [15, 0] // Brota 15px do solo
+                    })}
+                ],
+                opacity: morphAnim.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0, 0.8, 1]
+                })
+            }}>
                 {Platform.OS !== 'android' && <SpotMarkerVisual type={type} name={name} isNear={isNear} />}
             </Animated.View>
         </MapMarkerLibre>

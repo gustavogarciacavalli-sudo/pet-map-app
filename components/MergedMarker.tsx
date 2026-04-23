@@ -9,6 +9,7 @@ interface MergedMarkerProps {
   longitude: number;
   imageUris: (string | null)[];
   primaryColor: string;
+  isNew?: boolean;
   onPress?: () => void;
 }
 
@@ -37,14 +38,14 @@ export const MergedMarkerVisual: React.FC<{ images: (string | null)[], color: st
 );
 
 export const MergedMarker: React.FC<MergedMarkerProps> = (props) => {
-    const { id, latitude, longitude, onPress } = props;
+    const { id, latitude, longitude, onPress, isNew = false } = props;
     const { registerMarker, unregisterMarker } = useMarkerCapture();
     const [capturedUri, setCapturedUri] = useState<string | null>(null);
 
     useEffect(() => {
         if (Platform.OS === 'android') {
             const capture = async () => {
-                const cacheKey = `merged-marker-${id}-${props.primaryColor}-${props.imageUris.join(',')}`;
+                const cacheKey = `merged-marker-v2-${id}-${props.primaryColor}-${props.imageUris.join(',')}`;
                 const uri = await registerMarker(
                     cacheKey,
                     <MergedMarkerVisual images={props.imageUris} color={props.primaryColor} />,
@@ -68,6 +69,7 @@ export const MergedMarker: React.FC<MergedMarkerProps> = (props) => {
             onPress={onPress}
             anchor={{ x: 0.5, y: 0.5 }}
             icon={icon as any}
+            isNew={isNew}
         >
             {Platform.OS !== 'android' && <MergedMarkerVisual images={props.imageUris} color={props.primaryColor} />}
         </MapMarkerLibre>

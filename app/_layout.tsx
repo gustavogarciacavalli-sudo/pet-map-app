@@ -10,7 +10,6 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { SupabaseRealtimeProvider } from '../components/SupabaseRealtimeProvider';
 import { ToastProvider } from '../components/ToastProvider';
-import { MarkerCaptureProvider } from '../components/MarkerCaptureProvider';
 import { NotificationService } from '../services/NotificationService';
 import * as NavigationBar from 'expo-navigation-bar';
 
@@ -24,13 +23,12 @@ export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
 
-  // Configuração Imersiva (Game Mode)
+  // Configuração Imersiva (Game Mode) via código para evitar avisos no app.json
   useEffect(() => {
-    // No SDK 53+, edge-to-edge já vem habilitado por padrão
-    // if (Platform.OS === 'android') {
-    //   NavigationBar.setVisibilityAsync('hidden');
-    //   NavigationBar.setBehaviorAsync('overlay-swipe');
-    // }
+    if (Platform.OS === 'android') {
+      NavigationBar.setVisibilityAsync('hidden');
+      NavigationBar.setBehaviorAsync('overlay-swipe');
+    }
   }, []);
 
   useEffect(() => {
@@ -98,19 +96,17 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider>
         <ToastProvider>
-          <MarkerCaptureProvider>
-            <SupabaseRealtimeProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="login" />
-                <Stack.Screen name="permissions" options={{ animation: 'fade' }} />
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="social" options={{ animation: 'slide_from_right' }} />
-                <Stack.Screen name="pet-home" options={{ animation: 'slide_from_right' }} />
-              </Stack>
-              <StatusBar style="auto" />
-            </SupabaseRealtimeProvider>
-          </MarkerCaptureProvider>
+          <SupabaseRealtimeProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="login" />
+              <Stack.Screen name="permissions" options={{ animation: 'fade' }} />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="social" options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="pet-home" options={{ animation: 'slide_from_right' }} />
+            </Stack>
+            <StatusBar style="auto" />
+          </SupabaseRealtimeProvider>
         </ToastProvider>
       </ThemeProvider>
     </SafeAreaProvider>

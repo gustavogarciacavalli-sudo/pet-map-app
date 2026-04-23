@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, StyleSheet, Animated, Dimensions, Platform } from 'react-native';
+import Svg, { Circle, G, Defs, Filter, FeGaussianBlur, FeColorMatrix } from 'react-native-svg';
 
 const { width, height } = Dimensions.get('window');
 
@@ -9,121 +10,101 @@ interface LiquidMergeOverlayProps {
   color: string;
 }
 
-export const LiquidMergeOverlay: React.FC<LiquidMergeOverlayProps> = ({ visible, color }) => {
-  const scale1 = useRef(new Animated.Value(0)).current;
-  const scale2 = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+export const LiquidMergeOverlay: React.FC<LiquidMergeOverlayProps> = ({ visible, points, color }) => {
+  const animValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      scale1.setValue(0);
-      scale2.setValue(0);
-      opacity.setValue(0);
-
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 0, duration: 800, useNativeDriver: true }),
-        ]),
-        Animated.spring(scale1, {
+      animValue.setValue(0);
+      Animated.sequence([
+        Animated.timing(animValue, {
           toValue: 1,
-          tension: 15,
-          friction: 4,
+          duration: 600,
           useNativeDriver: true,
         }),
-        Animated.sequence([
-          Animated.delay(100),
-          Animated.spring(scale2, {
-            toValue: 1.2,
-            tension: 10,
-            friction: 3,
-            useNativeDriver: true,
-          }),
-        ])
+        Animated.timing(animValue, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        }),
       ]).start();
     }
   }, [visible]);
 
   if (!visible) return null;
 
+  // Burst central com pontos extras para o efeito líquido
+  const drawPoints = [
+    { x: width / 2, y: height / 2 },
+    { x: width / 2 + 15, y: height / 2 - 10 },
+    { x: width / 2 - 15, y: height / 2 + 10 },
+    { x: width / 2, y: height / 2 + 5 },
+  ];
+
   return (
-    <View style={styles.fullscreen} pointerEvents="none">
-        {/* Burst Camada 1 */}
-        <Animated.View style={[
-            styles.bubble,
-            {
-                backgroundColor: color,
-                opacity: opacity.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 0.6]
-                }),
-                transform: [{ scale: scale1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.5, 6]
-                })}]
-            }
-        ]} />
-
-        {/* Burst Camada 2 */}
-        <Animated.View style={[
-            styles.bubble,
-            {
-                backgroundColor: color,
-                opacity: opacity.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 0.4]
-                }),
-                transform: [{ scale: scale2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.3, 5]
-                })}]
-            }
-        ]} />
-
-        {/* Core de Luz */}
-        <Animated.View style={[
-            styles.core,
-            {
-                backgroundColor: '#FFF',
-                opacity: opacity.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 0.9]
-                }),
-                transform: [{ scale: scale1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.1, 1.5]
-                })}]
-            }
-        ]} />
+    <View style={[StyleSheet.absoluteFill, { zIndex: 9999 }]} pointerEvents="none">
+      <Svg width={width} height={height} style={styles.svg}>
+        <Defs>
+          <Filter id="goo">
+            <FeGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur" />
+            <FeColorMatrix
+              in="blur"
+              type="matrix"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -10"
+            />
+          </Filter>
+        </Defs>
+        <G filter="url(#goo)">
+          {drawPoints.map((p, i) => (
+            <AnimatedCircle
+              key={i}
+              cx={p.x}
+              cy={p.y}
+              r={animValue.interpolate({
+                inputRange: [0, 0.5, 1],
+                outputRange: [0, 80, 60],
+              })}
+              fill={color}
+              opacity={animValue.interpolate({
+                inputRange: [0, 0.2, 1],
+                outputRange: [0, 0.9, 0.7],
+              })}
+            />
+          ))}
+        </G>
+      </Svg>
+      
+      {/* Fallback Glow - Garante visibilidade se o filtro SVG falhar */}
+      <Animated.View style={[
+        styles.fallbackGlow,
+        {
+            backgroundColor: color,
+            opacity: animValue.interpolate({
+                inputRange: [0, 0.5, 1],
+                outputRange: [0, 0.4, 0]
+            }),
+            transform: [{ scale: animValue.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.5, 3]
+            })}]
+        }
+      ]} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  fullscreen: {
+  svg: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    zIndex: 999999, // Z-index astronômico
-    elevation: 999,
   },
-  bubble: {
+  fallbackGlow: {
     position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-  },
-  core: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FFF',
-    shadowColor: '#FFF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 30,
-    elevation: 25,
+    top: height / 2 - 50,
+    left: width / 2 - 50,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   }
 });

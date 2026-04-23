@@ -21,7 +21,6 @@ export interface MapMarkerLibreProps {
     children?: React.ReactNode;
     anchor?: { x: number; y: number };
     icon?: any;
-    isNew?: boolean;
 }
 
 export interface MapCircleLibreProps {
@@ -36,20 +35,20 @@ export const MapViewLibre = React.forwardRef<any, MapViewLibreProps>((props, ref
     // Metro selecionará .web ou .native automaticamente
     const Impl = Platform.OS === 'web' 
         ? require('./MapViewLibre.web').MapViewLibre 
-        : require('./MapViewLibre.native').MapViewLibre;
+        : require('./MapViewLibre').MapViewLibre; // Na prática, o Metro resolve para .native
     return <Impl {...props} ref={ref} />;
 });
 
 export const MapMarkerLibre: React.FC<MapMarkerLibreProps> = (props) => {
     const Impl = Platform.OS === 'web' 
         ? require('./MapViewLibre.web').MapMarkerLibre 
-        : require('./MapViewLibre.native').MapMarkerLibre;
+        : require('./MapViewLibre').MapMarkerLibre;
     return <Impl {...props} />;
 };
 
 export const MapCircleLibre: React.FC<MapCircleLibreProps> = (props) => {
     const Impl = Platform.OS === 'web' 
         ? require('./MapViewLibre.web').MapCircleLibre 
-        : require('./MapViewLibre.native').MapCircleLibre;
+        : require('./MapViewLibre').MapCircleLibre;
     return <Impl {...props} />;
 };

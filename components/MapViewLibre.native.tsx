@@ -1,72 +1,9 @@
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View, Animated } from 'react-native';
+import React from 'react';
+import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, Circle } from 'react-native-maps';
 import { useTheme } from './ThemeContext';
 
-// Criar versão animada do Marker para suportar Animated.Value em props nativas
-const AnimatedMarker = Animated.createAnimatedComponent(Marker);
-
-export interface MapMarkerLibreProps {
-    id: string;
-    coordinate: [number, number];
-    onPress?: () => void;
-    children?: React.ReactNode;
-    anchor?: { x: number; y: number };
-    icon?: any;
-    isNew?: boolean;
-}
-
-export const MapMarkerLibre: React.FC<MapMarkerLibreProps> = ({ 
-    coordinate, 
-    children, 
-    onPress, 
-    anchor, 
-    icon, 
-    isNew = false 
-}) => {
-    const opacity = useRef(new Animated.Value(isNew ? 0 : 1)).current;
-
-    useEffect(() => {
-        if (isNew) {
-            Animated.spring(opacity, {
-                toValue: 1,
-                tension: 180,
-                friction: 12,
-                useNativeDriver: true,
-            }).start();
-        }
-    }, [isNew]);
-
-    return (
-        <AnimatedMarker 
-            coordinate={{ latitude: coordinate[1], longitude: coordinate[0] }} 
-            onPress={onPress}
-            anchor={anchor}
-            icon={icon}
-            opacity={opacity as any}
-        >
-            {icon ? null : children}
-        </AnimatedMarker>
-    );
-};
-
-export const MapCircleLibre: React.FC<{
-    center: [number, number];
-    radius: number;
-    fillColor?: string;
-    strokeColor?: string;
-    strokeWidth?: number;
-}> = (props) => (
-    <Circle
-        center={{ latitude: props.center[1], longitude: props.center[0] }}
-        radius={props.radius}
-        fillColor={props.fillColor}
-        strokeColor={props.strokeColor}
-        strokeWidth={props.strokeWidth}
-    />
-);
-
-export const MapViewLibre = React.forwardRef<MapView, {
+export interface MapViewLibreProps {
     region: {
         latitude: number;
         longitude: number;
@@ -77,7 +14,49 @@ export const MapViewLibre = React.forwardRef<MapView, {
     onPress?: (coord: [number, number]) => void;
     onRegionChangeComplete?: (region: any) => void;
     children?: React.ReactNode;
-}>(({ region, onPress, onRegionChangeComplete, children }, ref) => {
+}
+
+export interface MapMarkerLibreProps {
+    id: string;
+    coordinate: [number, number];
+    onPress?: () => void;
+    children?: React.ReactNode;
+    anchor?: { x: number; y: number };
+    icon?: any;
+}
+
+export interface MapCircleLibreProps {
+    center: [number, number];
+    radius: number;
+    fillColor?: string;
+    strokeColor?: string;
+    strokeWidth?: number;
+}
+
+export const MapMarkerLibre: React.FC<MapMarkerLibreProps> = ({ coordinate, children, onPress, anchor, icon }) => {
+    return (
+        <Marker 
+            coordinate={{ latitude: coordinate[1], longitude: coordinate[0] }} 
+            onPress={onPress}
+            anchor={anchor}
+            icon={icon}
+        >
+            {icon ? null : children}
+        </Marker>
+    );
+};
+
+export const MapCircleLibre: React.FC<MapCircleLibreProps> = (props) => (
+    <Circle
+        center={{ latitude: props.center[1], longitude: props.center[0] }}
+        radius={props.radius}
+        fillColor={props.fillColor}
+        strokeColor={props.strokeColor}
+        strokeWidth={props.strokeWidth}
+    />
+);
+
+export const MapViewLibre = React.forwardRef<MapView, MapViewLibreProps>(({ region, onPress, onRegionChangeComplete, children }, ref) => {
     const { isDarkMode } = useTheme();
 
     return (

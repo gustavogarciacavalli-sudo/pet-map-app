@@ -12,12 +12,17 @@ import * as Battery from 'expo-battery';
 import { MapViewLibre, MapMarkerLibre } from '@/components/MapViewLibre';
 import { GameMarker } from '@/components/GameMarker';
 import { SpotMarker, SpotType } from '@/components/SpotMarker';
+import { TreasureMarker } from '@/components/TreasureMarker';
 import { useSupabaseRealtime } from '@/components/SupabaseRealtimeProvider';
 import { ParticleSystem, ParticleSystemRef } from '@/components/ParticleSystem';
 import { AuthService } from '@/services/AuthService';
 import { supabase } from '@/services/supabaseConfig';
 import { PetPreview } from '@/components/PetPreview';
+import { MarkerCaptureProvider } from '@/components/MarkerCaptureProvider';
 import { isValidUUID } from '@/services/AuthService';
+import { clusterPlayers, MarkerData, PlayerData } from '@/utils/clusterPlayers';
+import { MergedMarker } from '@/components/MergedMarker';
+import { LiquidMergeOverlay } from '@/components/LiquidMergeOverlay';
 
 import { 
     getPetLocal, 
@@ -108,6 +113,18 @@ export default function MapScreen() {
     const [userCircles, setUserCircles] = useState<any[]>([]);
     const [showCircleSelector, setShowCircleSelector] = useState(false);
     const [activeCircleMembers, setActiveCircleMembers] = useState<string[]>([]);
+    
+    // Estados para funcionalidades premium e clustering
+    const mapRef = useRef<any>(null);
+    const [visibleMarkers, setVisibleMarkers] = useState<MarkerData[]>([]);
+    const [currentRegion, setCurrentRegion] = useState<any>(null);
+    const lastMarkerCount = useRef(0);
+    
+    // Estados de Animação Líquida
+    const [mergePoints, setMergePoints] = useState<{ x: number, y: number }[]>([]);
+    const [showMerge, setShowMerge] = useState(false);
+    const [animatingIds, setAnimatingIds] = useState<Set<string>>(new Set());
+    
     const [circleMembers, setCircleMembers] = useState<any[]>([]);
     const [showSOSConfirm, setShowSOSConfirm] = useState(false);
     const [incomingSOS, setIncomingSOS] = useState<any>(null);
@@ -264,9 +281,9 @@ export default function MapScreen() {
         runDiagnostics();
     }, []);
     
-    const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+    const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
     const SHEET_MIN = Math.max(24, insets.bottom + 12);
-    const SHEET_MAX = SCREEN_HEIGHT - (insets.top + 200); // Aumentado para mostrar mais conteúdo, mas com margem para o HUD
+    const SHEET_MAX = SCREEN_HEIGHT - (insets.top + 200); 
 
     const sheetHeightAnim = useRef(new Animated.Value(SHEET_MIN)).current;
     const lastSheetHeight = useRef(SHEET_MIN);
@@ -452,6 +469,55 @@ export default function MapScreen() {
         return () => clearInterval(interval);
     }, [radarTimer]);
 
+    // Lógica de Agrupamento de Jogadores (Zenly Style)
+    useEffect(() => {
+        const players: PlayerData[] = [];
+        
+        // Adicionar "Eu"
+        players.push({
+            id: 'me',
+            name: userName,
+            coordinates: { latitude: location.latitude, longitude: location.longitude },
+            color: colors.primary,
+            imageUri: userAvatarUri,
+            pet: pet,
+            isMe: true,
+            heading: location.heading
+        });
+
+        // Adicionar outros usuários remotos
+        Object.values(remoteUsers).forEach(u => {
+            if (activeCircle !== 'Principal' && !activeCircleMembers.includes(u.id)) return;
+            if (u.location) {
+                players.push({
+                    id: u.id,
+                    name: u.name,
+                    coordinates: { latitude: u.location.latitude, longitude: u.location.longitude },
+                    color: colors.primary,
+                    imageUri: u.imageUri,
+                    pet: u.pet,
+                    heading: u.location.heading
+                });
+            }
+        });
+
+        const clusters = clusterPlayers(players, currentRegion || location, 0.001);
+        
+        // Detectar Mudança de Estado (Fusão ou Separação)
+        if (lastMarkerCount.current > 0 && clusters.length !== lastMarkerCount.current) {
+            console.log("🌊 MUDANÇA DE CLUSTER! Animando líquido...");
+            setShowMerge(true);
+            setTimeout(() => setShowMerge(false), 1500);
+        }
+        
+        lastMarkerCount.current = clusters.length;
+        setVisibleMarkers(clusters);
+    }, [remoteUsers, location, currentRegion, activeCircle, activeCircleMembers, userName, userAvatarUri, pet]);
+
+    const handleRegionChangeComplete = (region: any) => {
+        setCurrentRegion(region);
+    };
+
     const handleSyncPress = () => {
         if (!location.latitude) return;
         broadcastSyncInvite({
@@ -626,78 +692,86 @@ export default function MapScreen() {
                         <Text style={{ color: colors.subtext, fontSize: 14 }}>Aguarde enquanto localizamos você</Text>
                     </View>
                 ) : (
-                    <MapViewLibre region={location} onPress={() => setShowMemberDetail(false)}>
-
-                    {/* Pontos Oficiais no Mapa */}
-                    {PET_SPOTS.map(spot => (
-                        <SpotMarker 
-                            key={spot.id}
-                            id={spot.id}
-                            name={spot.name}
-                            type={spot.type}
-                            latitude={spot.lat}
-                            longitude={spot.lon}
-                            isNear={activeSpot?.id === spot.id}
-                        />
-                    ))}
-
-                    {/* Tesouros do Radar */}
-                    {treasures.map(t => (
-                        <MapMarkerLibre 
-                            key={t.id}
-                            id={t.id}
-                            coordinate={[t.lon, t.lat]}
-                            onPress={() => collectTreasure(t)}
+                    <MarkerCaptureProvider>
+                        <MapViewLibre 
+                            ref={mapRef}
+                            region={location} 
+                            onPress={() => setShowMemberDetail(false)}
+                            onRegionChangeComplete={handleRegionChangeComplete}
                         >
-                            <View style={{ width: 60, height: 60, alignItems: 'center', justifyContent: 'center' }}>
-                                <View style={{ 
-                                    backgroundColor: t.type === 'gem' ? '#7AABE0' : '#FFD700', 
-                                    padding: 6, 
-                                    borderRadius: 20, 
-                                    borderWidth: 2, 
-                                    borderColor: '#FFF',
-                                    // Removed Fabric-incompatible Marker shadows & elevations!
-                                }}>
-                                    <Ionicons name={t.type === 'gem' ? "diamond" : "gift"} size={24} color="#FFF" />
-                                </View>
-                            </View>
-                        </MapMarkerLibre>
-                    ))}
-
-                    {/* Avatar do jogador */}
-                    <GameMarker 
-                        id="me" 
-                        latitude={location.latitude} 
-                        longitude={location.longitude} 
-                        heading={location.heading || 0}
-                        name={userName}
-                        pet={pet || undefined}
-                        avatarUri={userAvatarUri}
-                        primaryColor={colors.primary}
-                        isMe={true}
-                    />
-
-                    {/* Membros do clã e exploradores no mapa 3D */}
-                    {Object.values(remoteUsers)
-                        .filter(u => {
-                            if (activeCircle === 'Principal') return false;
-                            return activeCircleMembers.includes(u.id);
-                        })
-                        .map(remoteUser => (
-                        remoteUser.location && (
-                            <GameMarker 
-                                key={remoteUser.id}
-                                id={remoteUser.id}
-                                latitude={remoteUser.location.latitude}
-                                longitude={remoteUser.location.longitude}
-                                heading={remoteUser.location.heading}
-                                name={remoteUser.name}
-                                pet={remoteUser.pet}
-                                primaryColor={colors.primary}
+                        
+                        {/* Pontos Oficiais no Mapa - Somem com Zoom Out */}
+                        {(currentRegion?.latitudeDelta < 0.02 || !currentRegion) && PET_SPOTS.map(spot => (
+                            <SpotMarker 
+                                key={spot.id}
+                                id={spot.id}
+                                name={spot.name}
+                                type={spot.type}
+                                latitude={spot.lat}
+                                longitude={spot.lon}
+                                isNear={activeSpot?.id === spot.id}
                             />
-                        )
-                    ))}
-                </MapViewLibre>
+                        ))}
+
+                        {/* Tesouros do Radar */}
+                        {treasures.map(t => (
+                            <TreasureMarker 
+                                key={t.id}
+                                id={t.id}
+                                latitude={t.lat}
+                                longitude={t.lon}
+                                type={t.type}
+                                onPress={() => collectTreasure(t)}
+                            />
+                        ))}
+
+                        {/* Renderização Dinâmica de Marcadores (Clustered) */}
+                        {visibleMarkers.map(m => {
+                            // Esconder marcadores que estão em fase de animação
+                            if (showMerge && animatingIds.has(m.id)) {
+                                // Mostra um efeito de transição se desejar
+                            }
+
+                            if (m.type === 'merged' && m.players) {
+                                return (
+                                    <MergedMarker 
+                                        key={m.id}
+                                        id={m.id}
+                                        latitude={m.coordinates.latitude}
+                                        longitude={m.coordinates.longitude}
+                                        imageUris={(m.players || []).map((p: any) => p.imageUri)}
+                                        primaryColor={(m.players || [])[0]?.color || colors.primary}
+                                        onPress={() => {
+                                            if (m.players) handleMemberTap(m.players[0]);
+                                        }}
+                                    />
+                                );
+                            }
+
+                            if (m.type === 'single' && m.player) {
+                                return (
+                                    <GameMarker 
+                                        key={m.id}
+                                        id={m.id}
+                                        latitude={m.coordinates.latitude}
+                                        longitude={m.coordinates.longitude}
+                                        heading={m.player.heading || 0}
+                                        name={m.player.name}
+                                        primaryColor={m.player.color}
+                                        pet={m.player.pet}
+                                        avatarUri={m.player.imageUri}
+                                        isMe={m.player.isMe}
+                                        onPress={() => {
+                                            if (m.player) handleMemberTap(m.player);
+                                        }}
+                                    />
+                                );
+                            }
+
+                            return null;
+                        })}
+                    </MapViewLibre>
+                    </MarkerCaptureProvider>
                 )}
 
                 <View style={[styles.topOverlay, { paddingTop: insets.top }]} pointerEvents="box-none">
@@ -1152,6 +1226,13 @@ export default function MapScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Overlay de Animação Líquida */}
+            <LiquidMergeOverlay 
+                visible={showMerge}
+                points={mergePoints.length > 0 ? mergePoints : [{ x: SCREEN_WIDTH/2, y: SCREEN_HEIGHT/2 }, { x: SCREEN_WIDTH/2 + 20, y: SCREEN_HEIGHT/2 + 20 }]}
+                color={colors.primary}
+            />
         </View>
     );
 }

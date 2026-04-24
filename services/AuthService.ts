@@ -460,7 +460,7 @@ export const AuthService = {
             const chatKey = [senderId, recipientId].sort().join('_');
             if (!mockChats[chatKey]) mockChats[chatKey] = [];
             
-            const userMsg = { id: Date.now().toString(), sender_id: senderId, receiver_id: recipientId, text, created_at: new Date().toISOString() };
+            const userMsg = { id: Date.now().toString(), sender_id: senderId, recipient_id: recipientId, text, created_at: new Date().toISOString() };
             mockChats[chatKey].push(userMsg);
             
             const notify = botSubscriptions[`${recipientId}_${senderId}`] || botSubscriptions[`${senderId}_${recipientId}`];
@@ -469,7 +469,7 @@ export const AuthService = {
             // Simular resposta do bot para testar memória!
             if (recipientId.startsWith('bot-')) {
                 setTimeout(() => {
-                    const botMsg = { id: (Date.now() + 1).toString(), sender_id: recipientId, receiver_id: senderId, text: `Olá! Eu recebi sua mensagem: "${text}". Minha memória está funcionando! 🤖`, created_at: new Date().toISOString() };
+                    const botMsg = { id: (Date.now() + 1).toString(), sender_id: recipientId, recipient_id: senderId, text: `Olá! Eu recebi sua mensagem: "${text}". Minha memória está funcionando! 🤖`, created_at: new Date().toISOString() };
                     mockChats[chatKey].push(botMsg);
                     const notifyBot = botSubscriptions[`${senderId}_${recipientId}`];
                     if (notifyBot) notifyBot(botMsg);
@@ -504,6 +504,26 @@ export const AuthService = {
             }, (payload) => {
                 if (payload.new.sender_id === recipientId) onMessage(payload.new);
             }).subscribe();
+    },
+
+    broadcastTyping: (userId: string, recipientId: string, isTyping: boolean) => {
+        if (recipientId.startsWith('bot-')) return;
+        supabase.channel(`typing_${recipientId}`)
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    supabase.channel(`typing_${recipientId}`).send({
+                        type: 'broadcast',
+                        event: 'typing',
+                        payload: { userId, isTyping }
+                    });
+                }
+            });
+    },
+
+    subscribeToTyping: (userId: string, onTyping: (payload: { userId: string, isTyping: boolean }) => void) => {
+        return supabase.channel(`typing_${userId}`)
+            .on('broadcast', { event: 'typing' }, (payload) => onTyping(payload.payload))
+            .subscribe();
     },
 
     toggleLikeCloud: async (userId: string, targetId: string) => {

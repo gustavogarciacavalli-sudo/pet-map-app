@@ -26,7 +26,7 @@ export default function SocialScreen() {
     const router = useRouter();
     const { tab } = useLocalSearchParams<{ tab?: string }>();
     const [activeTopTab, setActiveTopTab] = useState<'perfil' | 'social' | 'clas'>(tab === 'perfil' ? 'perfil' : 'social');
-    const [activeSocialSubTab, setActiveSocialSubTab] = useState<'amigos' | 'recomendados' | 'inbox'>('amigos');
+    const [activeSocialSubTab, setActiveSocialSubTab] = useState<'recomendados' | 'inbox'>('recomendados');
     const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar'>('meus');
 
     // Estados para Clãs
@@ -459,9 +459,8 @@ export default function SocialScreen() {
                         <TextInput
                             style={[styles.searchInput, { color: colors.text, outlineStyle: 'none' } as any]}
                             placeholder={
-                                activeSocialSubTab === 'amigos' ? "Buscar amigos..." :
-                                activeSocialSubTab === 'inbox' ? "Buscar solicitações..." :
-                                "Descobrir exploradores..."
+                                activeSocialSubTab === 'recomendados' ? "Descobrir exploradores..." :
+                                "Buscar solicitações..."
                             }
                             placeholderTextColor={colors.subtext}
                             value={socialSearch}
@@ -478,9 +477,6 @@ export default function SocialScreen() {
 
                     {/* SUB TAB BAR SOCIAL */}
                     <View style={styles.subTabBar}>
-                        <Pressable onPress={() => setActiveSocialSubTab('amigos')} style={[styles.subTabBtn, activeSocialSubTab === 'amigos' && { backgroundColor: colors.accent }]}>
-                            <Text style={[styles.subTabText, { color: activeSocialSubTab === 'amigos' ? colors.primary : colors.subtext }]}>Amigos</Text>
-                        </Pressable>
                         <Pressable onPress={() => setActiveSocialSubTab('recomendados')} style={[styles.subTabBtn, activeSocialSubTab === 'recomendados' && { backgroundColor: colors.accent }]}>
                             <Text style={[styles.subTabText, { color: activeSocialSubTab === 'recomendados' ? colors.primary : colors.subtext }]}>Recomendados</Text>
                         </Pressable>
@@ -497,64 +493,7 @@ export default function SocialScreen() {
                         style={{ flex: 1 }}
                         contentContainerStyle={{ flexGrow: 1 }}
                     >
-                        {activeSocialSubTab === 'amigos' ? (
-                            <View style={styles.membersSection}>
-                                {confirmedFriends
-                                    .filter(m => m.name.toLowerCase().includes(socialSearch.toLowerCase()))
-                                    .sort((a, b) => {
-                                        const aLiked = likedIds.includes(a.id);
-                                        const bLiked = likedIds.includes(b.id);
-                                        if (aLiked && !bLiked) return -1;
-                                        if (!aLiked && bLiked) return 1;
-                                        return 0;
-                                    }).map(member => {
-                                        if (!member) return null;
-                                        const isLiked = likedIds.includes(member.id);
-                                        return (
-                                            <View key={member.id} style={[styles.memberItem, { borderColor: colors.border }]}>
-                                                <Pressable
-                                                    onPress={() => {
-                                                        setActivePreviewMember(member);
-                                                        setIsAvatarZoomVisible(true);
-                                                    }}
-                                                    style={[styles.memberAvatar, { backgroundColor: colors.accent }]}
-                                                >
-                                                    {member?.species ? (
-                                                        <PetPreview species={member.species} size={50} customImageUri={member.avatar} />
-                                                    ) : (
-                                                        <Ionicons name="person" size={24} color={colors.primary} />
-                                                    )}
-
-                                                    <View style={[
-                                                        styles.presenceCircle,
-                                                        {
-                                                            backgroundColor: member?.online ? '#4CAF50' : '#E74C3C',
-                                                            borderColor: colors.background
-                                                        }
-                                                    ]} />
-                                                </Pressable>
-                                                <Pressable
-                                                    onPress={() => {
-                                                        setActivePreviewMember(member);
-                                                        setIsMemberCardVisible(true);
-                                                    }}
-                                                    style={styles.memberInfo}
-                                                >
-                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                        <Text style={[styles.memberName, { color: colors.text }]}>{member?.name}</Text>
-                                                        {isLiked && <Ionicons name="heart" size={14} color="#E74C3C" />}
-                                                    </View>
-                                                    <Text style={[styles.memberLoc, { color: colors.subtext }]}>{member?.location}</Text>
-                                                    <Text style={[styles.memberSince, { color: colors.subtext }]}>Desde às {member?.since}</Text>
-                                                </Pressable>
-                                                <Pressable onPress={() => handleOpenChat(member.id, member.name, member.avatar)}>
-                                                    <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.subtext} />
-                                                </Pressable>
-                                            </View>
-                                        );
-                                    })}
-                            </View>
-                        ) : activeSocialSubTab === 'recomendados' ? (
+                        {activeSocialSubTab === 'recomendados' ? (
                             <View style={styles.membersSection}>
                                 {isLoadingNearby ? (
                                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 40 }}>

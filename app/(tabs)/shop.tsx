@@ -1,59 +1,16 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Animated, Easing } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Animated, Easing, Modal } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
     getCoinsLocal, saveCoinsLocal, updatePetAccessoryLocal, addXPLocal,
     getEnergyLocal, saveEnergyLocal, getGemsLocal, saveGemsLocal,
     addSpentCoinsLocal, addSpentGemsLocal, getInventoryLocal, addToInventoryLocal
 } from '../../localDatabase';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../components/ThemeContext';
 
-export type ShopTab = 'accessory' | 'consumable' | 'gem_store';
-type ItemRarity = 'common' | 'rare' | 'epic' | 'legendary';
-
-const RARITY_COLORS: Record<ItemRarity, { bg: string; darkBg: string; border: string; glow: string }> = {
-    common: { bg: '#E8F5E810', darkBg: '#34D39912', border: '#34D399', glow: '#34D39930' },
-    rare: { bg: '#60A5FA10', darkBg: '#60A5FA12', border: '#60A5FA', glow: '#60A5FA30' },
-    epic: { bg: '#A78BFA10', darkBg: '#A78BFA12', border: '#A78BFA', glow: '#A78BFA30' },
-    legendary: { bg: '#FBBF2410', darkBg: '#FBBF2412', border: '#FBBF24', glow: '#FBBF2430' },
-};
-
-const CATALOG = [
-    // Acessórios Soft Currency
-    { id: 'bow', name: 'Laço Rosa', price: 150, currency: 'coins', icon: 'ribbon', iconLib: 'Ionicons', tab: 'accessory', rarity: 'common' as ItemRarity },
-    { id: 'glasses', name: 'Óculos do Saber', price: 200, currency: 'coins', icon: 'glasses', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'common' as ItemRarity },
-    { id: 'flower', name: 'Flor de Sakura', price: 350, currency: 'coins', icon: 'flower-tulip', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'common' as ItemRarity },
-    { id: 'cap', name: 'Boné Esportivo', price: 400, currency: 'coins', icon: 'hat-fedora', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'common' as ItemRarity },
-    { id: 'scarf', name: 'Cachecol Fofo', price: 1000, currency: 'coins', icon: 'muffler', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'rare' as ItemRarity },
-    { id: 'necklace', name: 'Colar de Pérolas', price: 2500, currency: 'coins', icon: 'necklace', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'rare' as ItemRarity },
-    { id: 'hat_fisher', name: 'Chapéu Pescador', price: 3000, currency: 'coins', icon: 'hook', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'rare' as ItemRarity },
-    { id: 'cloak', name: 'Capa de Viajante', price: 5000, currency: 'coins', icon: 'tshirt-crew', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'epic' as ItemRarity },
-
-    // Acessórios Hard Currency (Gems)
-    { id: 'crown', name: 'Coroa Imperial', price: 50, currency: 'gems', icon: 'crown', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'epic' as ItemRarity },
-    { id: 'shades', name: 'Óculos Estilo', price: 80, currency: 'gems', icon: 'sunglasses', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'epic' as ItemRarity },
-    { id: 'halo', name: 'Aura Celestial', price: 150, currency: 'gems', icon: 'star-four-points', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'legendary' as ItemRarity },
-    { id: 'vr_headset', name: 'Óculos VR Cyber', price: 250, currency: 'gems', icon: 'virtual-reality', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'legendary' as ItemRarity },
-    { id: 'magic_wand', name: 'Varinha Estelar', price: 500, currency: 'gems', icon: 'magic-staff', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'legendary' as ItemRarity },
-
-    // Consumíveis (Soft Currency)
-    { id: 'apple', name: 'Maçã Fresca', price: 50, currency: 'coins', icon: 'nutrition', iconLib: 'Ionicons', tab: 'consumable', boost: 30, rarity: 'common' as ItemRarity },
-    { id: 'milk', name: 'Leite Morno', price: 30, currency: 'coins', icon: 'cafe', iconLib: 'Ionicons', tab: 'consumable', boost: 20, rarity: 'common' as ItemRarity },
-    { id: 'meat', name: 'Bife Suculento', price: 120, currency: 'coins', icon: 'restaurant', iconLib: 'Ionicons', tab: 'consumable', boost: 50, rarity: 'rare' as ItemRarity },
-    { id: 'xp_potion_small', name: 'Poção de XP', price: 300, currency: 'coins', icon: 'flask', iconLib: 'Ionicons', tab: 'consumable', xp: 200, rarity: 'rare' as ItemRarity },
-
-    // Consumíveis (Hard Currency)
-    { id: 'xp_potion_mega', name: 'Elixir Supremo', price: 25, currency: 'gems', icon: 'beaker', iconLib: 'Ionicons', tab: 'consumable', xp: 2500, rarity: 'legendary' as ItemRarity },
-    { id: 'golden_meat', name: 'Bife Dourado', price: 15, currency: 'gems', icon: 'flame', iconLib: 'Ionicons', tab: 'consumable', boost: 100, rarity: 'epic' as ItemRarity },
-
-    // Loja de Gemas Real (Simulação de IAP)
-    { id: 'iap_1', name: 'Punhado de Gemas', price: 4.99, currency: 'fiat', icon: 'diamond', iconLib: 'Ionicons', tab: 'gem_store', givesGems: 100, rarity: 'common' as ItemRarity },
-    { id: 'iap_2', name: 'Saco de Gemas', price: 19.99, currency: 'fiat', icon: 'bag-handle', iconLib: 'Ionicons', tab: 'gem_store', givesGems: 500, rarity: 'rare' as ItemRarity },
-    { id: 'iap_3', name: 'Baú do Tesouro', price: 49.99, currency: 'fiat', icon: 'cube', iconLib: 'Ionicons', tab: 'gem_store', givesGems: 1500, rarity: 'epic' as ItemRarity },
-    { id: 'iap_4', name: 'Carro-Forte VIP', price: 99.99, currency: 'fiat', icon: 'trophy', iconLib: 'Ionicons', tab: 'gem_store', givesGems: 4000, rarity: 'legendary' as ItemRarity },
-];
+import { CATALOG, RARITY_COLORS, ShopTab, ItemRarity } from '../../constants/catalog';
 
 function renderItemIcon(item: any, size: number, color: string) {
     if (item.iconLib === 'Ionicons') return <Ionicons name={item.icon as any} size={size} color={color} />;
@@ -62,10 +19,16 @@ function renderItemIcon(item: any, size: number, color: string) {
 }
 
 // ─── Product Card ───
-function ProductCard({ item, isOwned, isDeal, onBuy, onEquip, colors, isDarkMode }: any) {
+function ProductCard({ item, inventory, isDeal, onBuy, onEquip, colors, isDarkMode }: any) {
     const scale = useRef(new Animated.Value(1)).current;
     const rarityStyle = RARITY_COLORS[item.rarity as ItemRarity];
     const isGemStore = item.tab === 'gem_store';
+    const isConsumable = item.tab === 'consumable';
+    const isHighlighted = item.id === colors.highlightId; // Hack to pass through colors or props
+    
+    // Contar quantas unidades o usuário já tem (para consumíveis)
+    const quantity = inventory.filter((id: string) => id === item.id).length;
+    const isOwned = !isConsumable && quantity > 0;
 
     const onPressIn = () => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, tension: 300, friction: 20 }).start();
     const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 300, friction: 20 }).start();
@@ -76,8 +39,13 @@ function ProductCard({ item, isOwned, isDeal, onBuy, onEquip, colors, isDarkMode
                 styles.card,
                 {
                     backgroundColor: colors.card,
-                    borderColor: colors.border,
+                    borderColor: isHighlighted ? colors.primary : colors.border,
+                    borderWidth: isHighlighted ? 2 : 1,
                     transform: [{ scale }],
+                    shadowColor: isHighlighted ? colors.primary : 'transparent',
+                    shadowOpacity: isHighlighted ? 0.5 : 0,
+                    shadowRadius: 10,
+                    elevation: isHighlighted ? 5 : 0
                 }
             ]}>
                 {/* Rarity indicator line */}
@@ -86,9 +54,13 @@ function ProductCard({ item, isOwned, isDeal, onBuy, onEquip, colors, isDarkMode
                 {/* Icon */}
                 <View style={[styles.itemIconBg, { backgroundColor: isDarkMode ? rarityStyle.darkBg : rarityStyle.bg }]}>
                     {renderItemIcon(item, 26, rarityStyle.border)}
-                    {isOwned && (
-                        <View style={[styles.ownedBadge, { backgroundColor: colors.primary }]}>
-                            <Ionicons name="checkmark" size={10} color="#FFF" />
+                    {(isOwned || (isConsumable && quantity > 0)) && (
+                        <View style={[styles.ownedBadge, { backgroundColor: isConsumable ? '#FFD700' : colors.primary }]}>
+                            {isConsumable ? (
+                                <Text style={{ color: '#000', fontSize: 10, fontWeight: '900' }}>x{quantity}</Text>
+                            ) : (
+                                <Ionicons name="checkmark" size={10} color="#FFF" />
+                            )}
                         </View>
                     )}
                 </View>
@@ -130,7 +102,7 @@ function ProductCard({ item, isOwned, isDeal, onBuy, onEquip, colors, isDarkMode
                     onPress={isOwned ? onEquip : onBuy}
                 >
                     <Text style={[styles.buyBtnText, { color: isOwned ? colors.text : '#FFF' }]}>
-                        {isOwned ? 'Equipar' : 'Comprar'}
+                        {isOwned ? 'Equipar' : (isConsumable && quantity > 0 ? 'Comprar +' : 'Comprar')}
                     </Text>
                 </Pressable>
             </Animated.View>
@@ -141,18 +113,34 @@ function ProductCard({ item, isOwned, isDeal, onBuy, onEquip, colors, isDarkMode
 // ─── Main Screen ───
 export default function ShopScreen() {
     const { colors, isDarkMode } = useTheme();
+    const insets = useSafeAreaInsets();
+    const router = useRouter();
     const [coins, setCoins] = useState(0);
     const [gems, setGems] = useState(0);
     const [inventory, setInventory] = useState<string[]>([]);
-    const [activeTab, setActiveTab] = useState<ShopTab>('accessory');
+    const { highlight, tab } = useLocalSearchParams();
+    const [activeTab, setActiveTab] = useState<ShopTab>((tab as ShopTab) || 'accessory');
     const [dailyDealId, setDailyDealId] = useState<string | null>(null);
+    const [highlightId, setHighlightId] = useState<string | null>((highlight as string) || null);
 
+    // Modals Custom
+    const [confirmModal, setConfirmModal] = useState<{ visible: boolean; item: any | null }>({ visible: false, item: null });
+    const [successModal, setSuccessModal] = useState<{ visible: boolean; item: any | null; extraMsg: string }>({ visible: false, item: null, extraMsg: '' });
+
+    const scrollY = useRef(new Animated.Value(0)).current;
+    const tabTranslateY = useRef(new Animated.Value(0)).current;
     const fadeIn = useRef(new Animated.Value(0)).current;
     const slideUp = useRef(new Animated.Value(30)).current;
+    const lastScrollY = useRef(0);
+    const isHeaderHidden = useRef(false);
 
     useFocusEffect(
         React.useCallback(() => {
             loadBalances();
+            if (highlight) {
+                setHighlightId(highlight as string);
+                if (tab) setActiveTab(tab as ShopTab);
+            }
             const coinItems = CATALOG.filter(i => i.currency === 'coins' && i.tab !== 'gem_store');
             const randomItem = coinItems[Math.floor(Math.random() * coinItems.length)];
             setDailyDealId(randomItem.id);
@@ -160,8 +148,35 @@ export default function ShopScreen() {
                 Animated.timing(fadeIn, { toValue: 1, duration: 500, easing: Easing.out(Easing.exp), useNativeDriver: true }),
                 Animated.spring(slideUp, { toValue: 0, tension: 80, friction: 12, useNativeDriver: true }),
             ]).start();
-        }, [])
+            
+            // Auto clear highlight after some time
+            const timer = setTimeout(() => setHighlightId(null), 5000);
+            return () => clearTimeout(timer);
+        }, [highlight, tab])
     );
+
+    const onScroll = (event: any) => {
+        const currentY = event.nativeEvent.contentOffset.y;
+        const diff = currentY - lastScrollY.current;
+        
+        // Estabilização: Evita triggers repetitivos e "bugs" de animação
+        if (currentY < 60) {
+            if (isHeaderHidden.current) {
+                isHeaderHidden.current = false;
+                Animated.spring(tabTranslateY, { toValue: 0, useNativeDriver: true, tension: 120, friction: 14 }).start();
+            }
+        } else if (diff > 15 && !isHeaderHidden.current) {
+            // Rolando para baixo: Esconde
+            isHeaderHidden.current = true;
+            Animated.spring(tabTranslateY, { toValue: -180, useNativeDriver: true, tension: 120, friction: 14 }).start();
+        } else if (diff < -25 && isHeaderHidden.current) {
+            // Rolando para cima: Mostra
+            isHeaderHidden.current = false;
+            Animated.spring(tabTranslateY, { toValue: 0, useNativeDriver: true, tension: 120, friction: 14 }).start();
+        }
+        
+        lastScrollY.current = currentY;
+    };
 
     const loadBalances = async () => {
         setCoins(await getCoinsLocal());
@@ -182,90 +197,128 @@ export default function ShopScreen() {
             ]);
             return;
         }
+        setConfirmModal({ visible: true, item });
+    };
 
-        const isGem = item.currency === 'gems';
-        const isDeal = item.id === dailyDealId;
-        const price = isDeal ? Math.floor(item.price / 2) : item.price;
-        const balance = isGem ? gems : coins;
-
-        if (balance < price) {
-            Alert.alert('Saldo insuficiente', `Você precisa de mais ${isGem ? 'gemas' : 'moedas'} para este item.`);
+    const processPurchase = async (item: any) => {
+        setConfirmModal({ visible: false, item: null });
+        
+        const balance = item.currency === 'coins' ? coins : gems;
+        if (balance < item.price) {
+            Alert.alert('Saldo Insuficiente', `Você precisa de mais ${item.currency === 'coins' ? 'moedas' : 'gemas'} para comprar este item.`);
             return;
         }
 
-        Alert.alert('Confirmar compra',
-            `Pagar ${price} ${isGem ? 'gemas' : 'moedas'} por ${item.name}? ${isDeal ? '(OFERTA DO DIA!)' : ''}`,
-            [
-                { text: 'Voltar', style: 'cancel' },
-                { text: 'Comprar', onPress: () => processPurchase(item, isGem, isDeal) }
-            ]
-        );
-    };
-
-    const processPurchase = async (item: any, isGem: boolean, isDeal: boolean) => {
-        const price = isDeal ? Math.floor(item.price / 2) : item.price;
-        if (isGem) {
-            const newGems = gems - price;
-            await saveGemsLocal(newGems);
-            await addSpentGemsLocal(price);
-            setGems(newGems);
-        } else {
-            const newCoins = coins - price;
+        if (item.currency === 'coins') {
+            const newCoins = coins - item.price;
             await saveCoinsLocal(newCoins);
-            await addSpentCoinsLocal(price);
+            await addSpentCoinsLocal(item.price);
             setCoins(newCoins);
+        } else {
+            const newGems = gems - item.price;
+            await saveGemsLocal(newGems);
+            await addSpentGemsLocal(item.price);
+            setGems(newGems);
         }
 
-        if (item.tab === 'accessory') {
-            await addToInventoryLocal(item.id);
+        if (item.tab === 'accessory' || item.tab === 'player_accessory') {
+            await addToInventoryLocal(item.id, false);
             setInventory([...inventory, item.id]);
-            await updatePetAccessoryLocal(item.id);
-            const xpResult = await addXPLocal(100);
-            const msg = xpResult.leveledUp ? `\n\nSeu explorador subiu para o nível ${xpResult.level}!` : "";
-            Alert.alert('Novo estilo adquirido!', `${item.name} foi equipado no seu pet.${msg}`);
-        } else if (item.tab === 'consumable') {
-            if (item.boost) {
-                const currentEnergy = await getEnergyLocal();
-                const newEnergy = Math.min(100, currentEnergy + item.boost);
-                await saveEnergyLocal(newEnergy);
+            if (item.tab === 'accessory') {
+                await updatePetAccessoryLocal(item.id);
             }
-            const xpGained = item.xp || 30;
-            const xpResult = await addXPLocal(xpGained);
-            const msg = xpResult.leveledUp ? `\n\nSeu explorador subiu para o nível ${xpResult.level}!` : "";
-            Alert.alert('Item consumido!', `Os efeitos de ${item.name} foram aplicados.${msg}`);
+            const xpResult = await addXPLocal(100);
+            const levelMsg = xpResult.leveledUp ? `\n\n🎉 Você subiu para o nível ${xpResult.level}!` : "";
+            const target = item.tab === 'accessory' ? 'seu pet' : 'você, Explorador';
+            
+            setSuccessModal({ 
+                visible: true, 
+                item, 
+                extraMsg: `${item.name} foi adicionado à sua Mochila e equipado em ${target}!${levelMsg}` 
+            });
+        } else if (item.tab === 'consumable' || item.tab === 'home') {
+            await addToInventoryLocal(item.id, true);
+            const newInv = await getInventoryLocal();
+            setInventory(newInv);
+            setSuccessModal({ 
+                visible: true, 
+                item, 
+                extraMsg: `${item.name} foi adicionado à sua Mochila!` 
+            });
         }
     };
 
     const handleEquip = async (item: any) => {
-        await updatePetAccessoryLocal(item.id);
-        Alert.alert('Equipado!', `${item.name} foi colocado no seu pet.`);
+        if (item.tab === 'accessory') {
+            await updatePetAccessoryLocal(item.id);
+            Alert.alert('Equipado!', `${item.name} foi colocado no seu pet.`);
+        } else {
+            Alert.alert('Estilo Selecionado!', `${item.name} agora faz parte do seu visual.`);
+            // Futuramente: updatePlayerAccessoryLocal(item.id);
+        }
     };
 
     const activeList = CATALOG.filter(i => i.tab === activeTab);
 
     const shopTabs: { id: ShopTab; label: string; icon: string }[] = [
-        { id: 'accessory', label: 'Moda', icon: 'shirt-outline' },
-        { id: 'consumable', label: 'Consumíveis', icon: 'flask-outline' },
-        { id: 'gem_store', label: 'WanderGems', icon: 'diamond-outline' },
+        { id: 'accessory', label: 'Moda Pet', icon: 'paw-outline' },
+        { id: 'player_accessory', label: 'Seu Estilo', icon: 'person-outline' },
+        { id: 'consumable', label: 'Itens', icon: 'flask-outline' },
+        { id: 'home', label: 'Casa', icon: 'home-outline' },
+        { id: 'gem_store', label: 'Gemas', icon: 'diamond-outline' },
     ];
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-            <Animated.View style={{ opacity: fadeIn, transform: [{ translateY: slideUp }] }}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            {/* Top Multi-Layer Fade Overlay (Evita corte seco) */}
+            <Animated.View 
+                style={{ 
+                    position: 'absolute', 
+                    top: 0, left: 0, right: 0, 
+                    height: insets.top + 60, 
+                    zIndex: 95, 
+                    opacity: tabTranslateY.interpolate({
+                        inputRange: [-100, 0],
+                        outputRange: [1, 0],
+                        extrapolate: 'clamp'
+                    })
+                }} 
+                pointerEvents="none"
+            >
+                {/* Simulação de Gradiente com camadas de opacidade */}
+                <View style={{ height: insets.top + 20, backgroundColor: colors.background }} />
+                <View style={{ height: 15, backgroundColor: colors.background, opacity: 0.8 }} />
+                <View style={{ height: 15, backgroundColor: colors.background, opacity: 0.4 }} />
+                <View style={{ height: 10, backgroundColor: colors.background, opacity: 0.1 }} />
+            </Animated.View>
+
+            {/* Header & Tabs Unified Container */}
+            <Animated.View style={{ 
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                transform: [{ translateY: tabTranslateY }], 
+                zIndex: 100, 
+                backgroundColor: colors.background,
+                paddingTop: insets.top,
+                opacity: tabTranslateY.interpolate({
+                    inputRange: [-100, 0],
+                    outputRange: [0, 1],
+                    extrapolate: 'clamp'
+                })
+            }}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <View>
-                        <Text style={[styles.title, { color: colors.text }]}>Loja Wander</Text>
-                        <Text style={[styles.subtitle, { color: colors.subtext }]}>Itens e cosméticos para seu companheiro</Text>
-                    </View>
-                    <View style={styles.walletsCol}>
-                        <View style={[styles.walletBadge, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '30' }]}>
-                            <Ionicons name="wallet" size={13} color={colors.primary} />
-                            <Text style={[styles.walletText, { color: colors.text }]}>{String(coins)}</Text>
-                        </View>
-                        <View style={[styles.walletBadge, { backgroundColor: '#60A5FA15', borderColor: '#60A5FA30' }]}>
-                            <Ionicons name="diamond" size={13} color="#60A5FA" />
-                            <Text style={[styles.walletText, { color: colors.text }]}>{String(gems)}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <Pressable 
+                            onPress={() => router.back()} 
+                            style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            <Ionicons name="arrow-back" size={20} color={colors.text} />
+                        </Pressable>
+                        <View>
+                            <Text style={[styles.title, { color: colors.text }]}>Loja</Text>
                         </View>
                     </View>
                 </View>
@@ -292,64 +345,168 @@ export default function ShopScreen() {
                 </ScrollView>
             </Animated.View>
 
+            {/* Floating Currencies */}
+            <View style={[styles.floatingWallets, { top: insets.top + 12 }]}>
+                <View style={[styles.walletBadge, { backgroundColor: 'rgba(0,0,0,0.6)', borderColor: colors.primary + '80' }]}>
+                    <Ionicons name="wallet" size={12} color={colors.primary} />
+                    <Text style={[styles.walletText, { color: '#FFF' }]}>{String(coins)}</Text>
+                </View>
+                <View style={[styles.walletBadge, { backgroundColor: 'rgba(0,0,0,0.6)', borderColor: '#60A5FA80' }]}>
+                    <Ionicons name="diamond" size={12} color="#60A5FA" />
+                    <Text style={[styles.walletText, { color: '#FFF' }]}>{String(gems)}</Text>
+                </View>
+            </View>
+
             {/* Content */}
-            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-                {activeTab === 'gem_store' && (
-                    <View style={[styles.gemBanner, { backgroundColor: '#60A5FA0C', borderColor: '#60A5FA20' }]}>
-                        <Ionicons name="diamond" size={20} color="#60A5FA" />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                            <Text style={[styles.gemBannerTitle, { color: '#60A5FA' }]}>WanderGems</Text>
-                            <Text style={[styles.gemBannerSub, { color: colors.subtext }]}>Moeda premium para itens exclusivos</Text>
-                        </View>
+            <ScrollView 
+                contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 110 }]} 
+                showsVerticalScrollIndicator={false}
+                onScroll={onScroll}
+                scrollEventThrottle={16}
+            >
+                {/* Dynamic Tab Description Banner */}
+                <View style={[
+                    styles.gemBanner, 
+                    { 
+                        backgroundColor: activeTab === 'gem_store' ? '#60A5FA0C' : colors.primary + '0C', 
+                        borderColor: activeTab === 'gem_store' ? '#60A5FA20' : colors.primary + '20' 
+                    }
+                ]}>
+                    <Ionicons 
+                        name={shopTabs.find(t => t.id === activeTab)?.icon as any} 
+                        size={20} 
+                        color={activeTab === 'gem_store' ? '#60A5FA' : colors.primary} 
+                    />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={[styles.gemBannerTitle, { color: activeTab === 'gem_store' ? '#60A5FA' : colors.primary }]}>
+                            {shopTabs.find(t => t.id === activeTab)?.label}
+                        </Text>
+                        <Text style={[styles.gemBannerSub, { color: colors.subtext }]}>
+                            {activeTab === 'accessory' && "Estilo e charme para o seu melhor amigo"}
+                            {activeTab === 'player_accessory' && "Expresse sua personalidade como explorador"}
+                            {activeTab === 'consumable' && "Poções, alimentos e utilitários para sua jornada"}
+                            {activeTab === 'home' && "Móveis e decorações para o lar do seu pet"}
+                            {activeTab === 'gem_store' && "WanderGems: Moeda premium para itens exclusivos"}
+                        </Text>
                     </View>
-                )}
+                </View>
 
                 <View style={styles.grid}>
                     {activeList.map(item => (
                         <ProductCard
                             key={item.id}
                             item={item}
-                            isOwned={inventory.includes(item.id)}
+                            inventory={inventory}
                             isDeal={item.id === dailyDealId}
                             onBuy={() => handleBuy(item)}
                             onEquip={() => handleEquip(item)}
-                            colors={colors}
+                            colors={{ ...colors, highlightId }}
                             isDarkMode={isDarkMode}
                         />
                     ))}
                 </View>
             </ScrollView>
-        </SafeAreaView>
+
+            {/* Custom Modals */}
+            <Modal visible={confirmModal.visible} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalIconContainer}>
+                            {confirmModal.item && renderItemIcon(confirmModal.item, 48, colors.primary)}
+                        </View>
+                        <Text style={[styles.modalTitle, { color: colors.text }]}>Confirmar Compra</Text>
+                        <Text style={[styles.modalSub, { color: colors.subtext }]}>
+                            Deseja adquirir <Text style={{ color: colors.text, fontWeight: '800' }}>{confirmModal.item?.name}</Text>?
+                        </Text>
+                        
+                        <View style={styles.priceRowLarge}>
+                            <Ionicons 
+                                name={confirmModal.item?.currency === 'gems' ? 'diamond' : 'wallet'} 
+                                size={20} 
+                                color={confirmModal.item?.currency === 'gems' ? '#60A5FA' : colors.primary} 
+                            />
+                            <Text style={[styles.priceTextLarge, { color: colors.text }]}>{confirmModal.item?.price}</Text>
+                        </View>
+
+                        <View style={styles.modalActionRow}>
+                            <Pressable 
+                                style={[styles.modalBtn, { backgroundColor: '#2C2C31' }]} 
+                                onPress={() => setConfirmModal({ visible: false, item: null })}
+                            >
+                                <Text style={{ color: '#AAA', fontWeight: '700' }}>Voltar</Text>
+                            </Pressable>
+                            <Pressable 
+                                style={[styles.modalBtn, { backgroundColor: colors.primary }]} 
+                                onPress={() => processPurchase(confirmModal.item)}
+                            >
+                                <Text style={{ color: '#FFF', fontWeight: '800' }}>Confirmar</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal visible={successModal.visible} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={[styles.modalIconContainer, { backgroundColor: colors.primary + '20' }]}>
+                            <Ionicons name="sparkles" size={48} color={colors.primary} />
+                        </View>
+                        <Text style={[styles.modalTitle, { color: colors.text }]}>Sucesso!</Text>
+                        <Text style={[styles.modalSub, { color: colors.subtext, textAlign: 'center' }]}>
+                            {successModal.extraMsg}
+                        </Text>
+                        
+                        <Pressable 
+                            style={[styles.modalBtn, { backgroundColor: colors.primary, width: '100%', marginTop: 10 }]} 
+                            onPress={() => setSuccessModal({ visible: false, item: null, extraMsg: '' })}
+                        >
+                            <Text style={{ color: '#FFF', fontWeight: '800' }}>Excelente!</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-
-    // ─── Header ───
     header: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 24,
-        paddingTop: 16,
-        paddingBottom: 8,
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingBottom: 10,
     },
     title: { fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
     subtitle: { fontSize: 12, fontWeight: '500', marginTop: 3, opacity: 0.7 },
-    walletsCol: { alignItems: 'flex-end', gap: 6 },
+    cardDescription: { fontSize: 10, color: '#AAA', marginTop: 4, textAlign: 'center' },
+    floatingWallets: { 
+        position: 'absolute', 
+        right: 16, 
+        zIndex: 110, 
+        flexDirection: 'row',
+        gap: 8, 
+        alignItems: 'center' 
+    },
+    walletsCol: { flexDirection: 'row', gap: 6 },
     walletBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: 12,
+        borderRadius: 14,
         paddingVertical: 5,
-        paddingHorizontal: 12,
-        borderWidth: 1,
+        paddingHorizontal: 10,
+        borderWidth: 1.5,
         gap: 6,
         minWidth: 70,
         justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOpacity: 0.4,
+        shadowRadius: 10,
+        elevation: 10,
     },
-    walletText: { fontSize: 12, fontWeight: '800' },
+    walletText: { fontSize: 12, fontWeight: '900' },
 
     // ─── Tabs ───
     tabContainer: { paddingHorizontal: 20, paddingBottom: 12, paddingTop: 8, gap: 8 },
@@ -434,4 +591,15 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     buyBtnText: { fontWeight: '800', fontSize: 12 },
+
+    // ─── Modals ───
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 30 },
+    modalContent: { width: '100%', backgroundColor: '#1C1C21', borderRadius: 32, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
+    modalIconContainer: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+    modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 8 },
+    modalSub: { fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: 20 },
+    priceRowLarge: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#000', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginBottom: 24 },
+    priceTextLarge: { fontSize: 24, fontWeight: '900' },
+    modalActionRow: { flexDirection: 'row', gap: 12, width: '100%' },
+    modalBtn: { flex: 1, height: 54, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
 });

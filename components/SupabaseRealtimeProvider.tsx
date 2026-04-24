@@ -133,7 +133,7 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
                                 id: user.id,
                                 name: user.name || user.email,
                                 pet: pet,
-                                imageUri: user.avatar_url || user.imageUri || null,
+                                imageUri: user.avatar_url || user.imageUri || (user as any).avatar || null,
                                 online_at: new Date().toISOString(),
                             });
                         }
@@ -159,7 +159,8 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
                 event: 'location',
                 payload: {
                     userId: currentUser.id,
-                    location: location
+                    location: location,
+                    imageUri: currentUser.avatar_url || currentUser.imageUri || (currentUser as any).avatar || null
                 }
             });
         }

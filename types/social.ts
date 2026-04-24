@@ -11,7 +11,7 @@ export interface FriendRequest {
 export interface ChatMessage {
     id: string;
     senderId: string;
-    receiverId: string;
+    recipientId: string;
     text: string;
     timestamp: number;
 }

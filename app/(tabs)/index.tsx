@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal } from 'react-native';
+import { View, StyleSheet, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,6 +23,8 @@ import { isValidUUID } from '@/services/AuthService';
 import { clusterPlayers, MarkerData, PlayerData } from '@/utils/clusterPlayers';
 import { MergedMarker } from '@/components/MergedMarker';
 import { LiquidMergeOverlay } from '@/components/LiquidMergeOverlay';
+import { CATALOG } from '../../constants/catalog';
+import { ChatMessage } from '../../types/social';
 
 import { 
     getPetLocal, 
@@ -66,12 +68,75 @@ const QUICK_MESSAGES = [
     { id: 'q4', text: 'Tudo bem?', icon: 'chatbubble-ellipses', color: '#3498DB' },
 ];
 
+const AnimatedLikeButton = ({ isLiked, onToggle }: { isLiked: boolean, onToggle: () => void }) => {
+    const scale = useRef(new Animated.Value(1)).current;
+
+    const handlePress = () => {
+        Animated.sequence([
+            Animated.timing(scale, { toValue: 1.4, duration: 100, useNativeDriver: true }),
+            Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true })
+        ]).start();
+        onToggle();
+    };
+
+    return (
+        <Pressable onPress={handlePress}>
+            <Animated.View style={{ transform: [{ scale }] }}>
+                <Ionicons 
+                    name={isLiked ? "heart" : "heart-outline"} 
+                    size={22} 
+                    color={isLiked ? "#FF4444" : "#666"} 
+                />
+            </Animated.View>
+        </Pressable>
+    );
+};
+
 const PET_SPOTS: { id: string, name: string, type: SpotType, lat: number, lon: number }[] = [
     { id: 'spot1', name: 'Parque Dog Feliz', type: 'park', lat: -25.4330, lon: -49.2810 },
     { id: 'spot2', name: 'Pet Shop VIP', type: 'shop', lat: -25.4350, lon: -49.2820 },
     { id: 'spot3', name: 'Shopping Pet Center', type: 'mall', lat: -25.4320, lon: -49.2840 },
     { id: 'spot4', name: 'Clínica Veterina 24h', type: 'vet', lat: -25.4370, lon: -49.2800 },
 ];
+
+const TypingIndicator = () => {
+    const dot1 = useRef(new Animated.Value(0)).current;
+    const dot2 = useRef(new Animated.Value(0)).current;
+    const dot3 = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        const animate = (val: Animated.Value, delay: number) => {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.delay(delay),
+                    Animated.timing(val, { toValue: 1, duration: 400, useNativeDriver: true }),
+                    Animated.timing(val, { toValue: 0, duration: 400, useNativeDriver: true }),
+                ])
+            ).start();
+        };
+        animate(dot1, 0);
+        animate(dot2, 200);
+        animate(dot3, 400);
+    }, []);
+
+    const dotStyle = (val: Animated.Value) => ({
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: '#AAA',
+        marginHorizontal: 2,
+        opacity: val.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }),
+        transform: [{ translateY: val.interpolate({ inputRange: [0, 1], outputRange: [0, -4] }) }]
+    });
+
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10, marginLeft: 16 }}>
+            <Animated.View style={dotStyle(dot1)} />
+            <Animated.View style={dotStyle(dot2)} />
+            <Animated.View style={dotStyle(dot3)} />
+        </View>
+    );
+};
 
 export default function MapScreen() {
     const { colors, isDarkMode, batterySaver } = useTheme();
@@ -140,6 +205,117 @@ export default function MapScreen() {
     const [radarTimer, setRadarTimer] = useState(0); // Cooldown em segundos
     const [treasures, setTreasures] = useState<{id: string, lat: number, lon: number, type: 'gold' | 'gem'}[]>([]);
 
+    // Radar Social
+    const [showSocialRadar, setShowSocialRadar] = useState(false);
+    const [showRadarModal, setShowRadarModal] = useState(false);
+    const [showCooldownModal, setShowCooldownModal] = useState(false);
+    const [showItemUsedModal, setShowItemUsedModal] = useState(false);
+    const [usedItemData, setUsedItemData] = useState<any>(null);
+    const [showTreasureModal, setShowTreasureModal] = useState(false);
+    const [treasureAmount, setTreasureAmount] = useState(0);
+    const [treasureType, setTreasureType] = useState<'coins' | 'gems'>('coins');
+    const [radarAnim] = useState(new Animated.Value(0));
+    const [discoveredUsers, setDiscoveredUsers] = useState<any[]>([]);
+
+    // Estados para Social Integrado (Likes e Chat)
+    const [likedIds, setLikedIds] = useState<string[]>([]);
+    const [isChatVisible, setIsChatVisible] = useState(false);
+    const [chatTarget, setChatTarget] = useState<{ id: string, name: string, avatar?: string | null } | null>(null);
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [chatInput, setChatInput] = useState('');
+    const chatSubscription = useRef<any>(null);
+    const chatScrollRef = useRef<ScrollView>(null);
+    const [isOtherTyping, setIsOtherTyping] = useState(false);
+    const typingSubscription = useRef<any>(null);
+    const typingTimeout = useRef<any>(null);
+
+    const handleSocialRadarScan = async () => {
+        setShowSocialRadar(true);
+        setDiscoveredUsers([]); // Limpa busca anterior
+        
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(radarAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
+                Animated.timing(radarAnim, { toValue: 0, duration: 0, useNativeDriver: true })
+            ])
+        ).start();
+
+        // Garantir pelo menos 2.5s de animação para o "feeling" de busca
+        const animationPromise = new Promise(resolve => setTimeout(resolve, 2500));
+        
+        try {
+            const user = await getCurrentUserLocal();
+            // Raio de ~1km em graus (aproximado)
+            const latDelta = 0.009;
+            const lonDelta = 0.01;
+
+            const { data: nearData } = await supabase
+                .from('locations')
+                .select('*, profiles(name, wander_id)')
+                .gte('latitude', location.latitude - latDelta)
+                .lte('latitude', location.latitude + latDelta)
+                .gte('longitude', location.longitude - lonDelta)
+                .lte('longitude', location.longitude + lonDelta)
+                .eq('ghost_mode', false)
+                .neq('user_id', user?.id) // Exclui a si mesmo
+                .limit(20);
+
+            let realUsers: any[] = [];
+            if (nearData) {
+                realUsers = nearData.map((l: any) => ({
+                    id: l.user_id,
+                    name: l.profiles?.name || 'Explorador',
+                    lat: l.latitude,
+                    lon: l.longitude,
+                    online: (new Date().getTime() - new Date(l.updated_at).getTime()) < 300000,
+                    isBot: false,
+                    dist: calculateDistance(location.latitude, location.longitude, l.latitude, l.longitude)
+                })).filter(u => u.dist <= 1000);
+            }
+
+            // Gerar BOTS se houver poucos usuários reais
+            const bots: any[] = [];
+            const botNames = ["Felipe M.", "Bruna Lima", "Gustavo G.", "Ana Clara", "Rodrigo S.", "Julia W.", "PetLover99", "Marcos V.", "Tati_Explorer", "Leo_Dog"];
+            
+            // Garantir que sempre existam pelo menos 5 resultados
+            const botsNeeded = Math.max(0, 5 - realUsers.length);
+            for (let i = 0; i < botsNeeded; i++) {
+                const randomName = botNames[Math.floor(Math.random() * botNames.length)];
+                const angle = Math.random() * Math.PI * 2;
+                const d = 150 + Math.random() * 800; // metros
+                
+                // Converter distância (m) para delta graus
+                const dLat = (d / 111320) * Math.cos(angle);
+                const dLon = (d / (111320 * Math.cos(location.latitude * Math.PI / 180))) * Math.sin(angle);
+                
+                bots.push({
+                    id: `bot-${Date.now()}-${i}`,
+                    name: randomName,
+                    lat: location.latitude + dLat,
+                    lon: location.longitude + dLon,
+                    online: true,
+                    isBot: true,
+                    dist: d
+                });
+            }
+
+            const allFound = [...realUsers, ...bots].sort((a, b) => a.dist - b.dist);
+            
+            await animationPromise;
+            setDiscoveredUsers(allFound);
+        } catch (err) {
+            console.error("Erro radar:", err);
+            await animationPromise;
+            setDiscoveredUsers([
+                { id: 'bot-1', name: 'Lucas P.', lat: location.latitude + 0.002, lon: location.longitude - 0.001, online: true, isBot: true, dist: 250 },
+                { id: 'bot-2', name: 'Marina Silva', lat: location.latitude - 0.001, lon: location.longitude + 0.003, online: true, isBot: true, dist: 420 }
+            ]);
+        } finally {
+            radarAnim.stopAnimation();
+            radarAnim.setValue(0);
+        }
+    };
+
     const setupBattery = async () => {
         const level = await Battery.getBatteryLevelAsync();
         setBatteryLevel(Math.round(level * 100));
@@ -171,25 +347,31 @@ export default function MapScreen() {
             const friendIds = await AuthService.getFriendsCloud(user.id);
             if (friendIds.length === 0) return;
 
+            // Buscar perfis de todos os amigos (mesmo sem localização recente)
+            const friendProfiles = await AuthService.getFriendsProfilesCloud(friendIds);
+
             const { data: initialLocs } = await supabase
                 .from('locations')
                 .select('*, profiles(name, wander_id)')
                 .in('user_id', friendIds)
                 .eq('ghost_mode', false);
 
-            if (initialLocs) {
-                const formatted = initialLocs.map((l: any) => ({
-                    id: l.user_id,
-                    name: l.profiles?.name || 'Explorador',
-                    lat: l.latitude,
-                    lon: l.longitude,
-                    online: (new Date().getTime() - new Date(l.updated_at).getTime()) < 60000,
+            const formatted = friendProfiles.map((p: any) => {
+                const loc = initialLocs?.find((l: any) => l.user_id === p.id);
+                return {
+                    id: p.id,
+                    name: p.name || 'Explorador',
+                    avatar: p.avatar,
+                    lat: loc?.latitude || 0,
+                    lon: loc?.longitude || 0,
+                    online: loc ? (new Date().getTime() - new Date(loc.updated_at).getTime()) < 60000 : false,
                     battery: 85,
-                    since: 'Agora'
-                }));
-                // @ts-ignore
-                setCircleMembers(formatted);
-            }
+                    since: loc ? 'Agora' : 'Offline',
+                    hasLocation: !!loc
+                };
+            });
+            // @ts-ignore
+            setCircleMembers(formatted);
 
             channel = supabase
                 .channel('friend-locations')
@@ -282,7 +464,7 @@ export default function MapScreen() {
     }, []);
     
     const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
-    const SHEET_MIN = Math.max(24, insets.bottom + 12);
+    const SHEET_MIN = Math.max(80, insets.bottom + 60);
     const SHEET_MAX = SCREEN_HEIGHT - (insets.top + 200); 
 
     const sheetHeightAnim = useRef(new Animated.Value(SHEET_MIN)).current;
@@ -356,9 +538,23 @@ export default function MapScreen() {
         setLevelData(l); 
         setTotalDistance(d);
         
-        // Load user avatar
-        if (p?.customImageUri) setUserAvatarUri(p.customImageUri);
-        if (u?.name) setUserName(u.name);
+        // Load user profile photo
+        if (u) {
+            let avatar = u.avatar_url || u.imageUri || (u as any).avatar || null;
+            
+            // Se não tiver local, tenta buscar do Supabase
+            if (!avatar && isValidUUID(u.id)) {
+                try {
+                    const profile = await AuthService.getUserProfile(u.id);
+                    if (profile?.avatar) avatar = profile.avatar;
+                } catch (err) {
+                    console.log("Erro ao buscar avatar da nuvem:", err);
+                }
+            }
+            
+            setUserAvatarUri(avatar);
+            if (u.name) setUserName(u.name);
+        }
 
         // Buscar Clãs do Usuário
         if (u) {
@@ -367,6 +563,10 @@ export default function MapScreen() {
                 g.group_members?.some((m: any) => m.user_id === u.id)
             );
             setUserCircles(filtered);
+
+            // Buscar Likes
+            const cloudLikes = await AuthService.getLikesCloud(u.id);
+            setLikedIds(cloudLikes);
         }
     };
 
@@ -556,6 +756,7 @@ export default function MapScreen() {
         else if (itemId === 'xp_potion_small') { type = 'xp'; amount = 300; }
         else if (itemId === 'milk') { type = 'happiness'; amount = 20; }
         else if (itemId === 'golden_meat') { type = 'energy'; amount = 100; }
+        else if (itemId === 'xp_potion_mega') { type = 'xp'; amount = 2500; }
 
         await consumeItemLocal(itemId, type, amount);
         loadData(); // Atualiza HUD
@@ -564,12 +765,20 @@ export default function MapScreen() {
         const newInv = await getInventoryLocal();
         setInventoryItems(newInv);
         
-        Alert.alert("Item Usado!", `Você consumiu ${itemId} e ganhou um bônus de ${amount} ${type}!`);
+        const itemDef = CATALOG.find(c => c.id === itemId);
+        setUsedItemData({ 
+            name: itemDef?.name || itemId, 
+            type, 
+            amount, 
+            icon: itemDef?.icon,
+            iconLib: (itemDef as any)?.iconLib
+        });
+        setShowItemUsedModal(true);
     };
 
     const handleRadarPress = async () => {
         if (radarTimer > 0) {
-            Alert.alert("Pet Cansado", `O pet ainda está descansando. Volte em ${Math.floor(radarTimer / 60)}m ${radarTimer % 60}s.`);
+            setShowCooldownModal(true);
             return;
         }
 
@@ -593,17 +802,21 @@ export default function MapScreen() {
             // Reduz contagem de partículas na economia
             particleRef.current.burst(W / 2, H - 200, batterySaver ? 'heart' : 'star');
         }
-        Alert.alert("Farejo Ativo!", "Seu pet encontrou rastros de tesouros próximos! Verifique o mapa.");
+        setShowRadarModal(true);
     };
 
     const collectTreasure = async (treasure: any) => {
         if (treasure.type === 'gem') {
             const current = await getGemsLocal();
             await saveGemsLocal(current + 2);
-            Alert.alert("Eba!", "Você encontrou 2 WanderGems!");
+            setTreasureAmount(2);
+            setTreasureType('gems');
+            setShowTreasureModal(true);
         } else {
-            await addCoinsLocal(25);
-            Alert.alert("Tesouro!", "Você abriu um baú com 25 Moedas!");
+            setCoins(await addCoinsLocal(25));
+            setTreasureAmount(25);
+            setTreasureType('coins');
+            setShowTreasureModal(true);
         }
         setTreasures(prev => prev.filter(t => t.id !== treasure.id));
         loadData();
@@ -612,6 +825,84 @@ export default function MapScreen() {
     const handleMemberTap = (member: any) => {
         setSelectedMember(member);
         setShowMemberDetail(true);
+    };
+
+    const handleToggleLike = async (targetId: string) => {
+        const user = await getCurrentUserLocal();
+        if (!user) return;
+        try {
+            const isLiked = await AuthService.toggleLikeCloud(user.id, targetId);
+            setLikedIds(prev => isLiked ? [...prev, targetId] : prev.filter(id => id !== targetId));
+        } catch (error) {
+            console.error("Erro ao curtir:", error);
+        }
+    };
+
+    const loadChat = async (targetId: string) => {
+        const user = await getCurrentUserLocal();
+        if (!user) return;
+        
+        const msgs = await AuthService.fetchMessages(user.id, targetId);
+        setChatMessages(msgs.map((m: any) => ({
+            id: m.id,
+            senderId: m.sender_id === user.id ? 'me' : m.sender_id,
+            recipientId: m.recipient_id === user.id ? 'me' : m.recipient_id,
+            text: m.text,
+            timestamp: new Date(m.created_at).getTime()
+        })));
+    };
+
+    const handleOpenChat = async (id: string, name: string, avatar?: string | null) => {
+        const user = await getCurrentUserLocal();
+        if (!user) return;
+        
+        setChatTarget({ id, name, avatar });
+        setIsChatVisible(true);
+        setIsOtherTyping(false);
+        await loadChat(id);
+
+        if (chatSubscription.current) supabase.removeChannel(chatSubscription.current);
+        chatSubscription.current = AuthService.subscribeToMessages(user.id, id, (newMsg) => {
+            setChatMessages(prev => {
+                if (prev.find(m => m.id === newMsg.id)) return prev;
+                return [...prev, {
+                    id: newMsg.id,
+                    senderId: newMsg.sender_id === user.id ? 'me' : newMsg.sender_id,
+                    recipientId: newMsg.recipient_id === user.id ? 'me' : newMsg.recipient_id,
+                    text: newMsg.text,
+                    timestamp: new Date(newMsg.created_at).getTime()
+                } as any];
+            });
+            setIsOtherTyping(false);
+        });
+
+        if (typingSubscription.current) supabase.removeChannel(typingSubscription.current);
+        typingSubscription.current = AuthService.subscribeToTyping(user.id, (payload) => {
+            if (payload.userId === id) {
+                setIsOtherTyping(payload.isTyping);
+            }
+        });
+    };
+
+    const handleTyping = async () => {
+        const user = await getCurrentUserLocal();
+        if (!user || !chatTarget) return;
+
+        AuthService.broadcastTyping(user.id, chatTarget.id, true);
+
+        if (typingTimeout.current) clearTimeout(typingTimeout.current);
+        typingTimeout.current = setTimeout(() => {
+            AuthService.broadcastTyping(user.id, chatTarget.id, false);
+        }, 2000);
+    };
+
+    const handleSendMessage = async () => {
+        if (!chatInput.trim() || !chatTarget) return;
+        const user = await getCurrentUserLocal();
+        if (user) {
+            await AuthService.sendMessageCloud(user.id, chatTarget.id, chatInput.trim());
+            setChatInput('');
+        }
     };
 
     const handleCircleSelect = (circleName: string, memberIds: string[] = []) => {
@@ -812,8 +1103,8 @@ export default function MapScreen() {
                             </View>
                         )}
 
-                        <View style={[styles.pillBadge, { backgroundColor: '#7C3AED22' }]}>
-                            <Text style={{ color: '#7C3AED', fontWeight: '800' }}>Lv {levelData.level}</Text>
+                        <View style={[styles.pillBadge, { backgroundColor: '#7C3AED', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 }]}>
+                            <Text style={{ color: '#FFF', fontWeight: '900' }}>Lv {levelData.level}</Text>
                         </View>
                     </View>
 
@@ -846,85 +1137,138 @@ export default function MapScreen() {
                         ]} 
                         pointerEvents="box-none"
                     >
-                        <Pressable 
-                            style={[styles.mapPill, { backgroundColor: isNearSpot ? '#A78BFF' : '#2C2C31', elevation: 8 }]}
-                            onPress={handleCheckIn}
-                        >
-                            <Ionicons name="checkmark-circle" size={18} color={isNearSpot ? "#FFF" : "#666"} />
-                            <Text style={[styles.mapPillText, { color: isNearSpot ? "#FFF" : "#666" }]}>Check-in</Text>
-                        </Pressable>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, gap: 10 }}>
+                            <Pressable 
+                                style={[styles.mapPill, { backgroundColor: isNearSpot ? '#A78BFF' : '#2C2C31', elevation: 8 }]}
+                                onPress={handleCheckIn}
+                            >
+                                <Ionicons name="checkmark-circle" size={18} color={isNearSpot ? "#FFF" : "#666"} />
+                                <Text style={[styles.mapPillText, { color: isNearSpot ? "#FFF" : "#666" }]}>Check-in</Text>
+                            </Pressable>
 
-                        <Pressable 
-                            style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#333', elevation: 8 }]}
-                            onPress={() => router.push('/quests')}
-                        >
-                            <Ionicons name="shield-checkmark" size={18} color="#A78BFF" />
-                            <Text style={styles.mapPillText}>Missões</Text>
-                        </Pressable>
+                            <Pressable 
+                                style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#333', elevation: 8 }]}
+                                onPress={() => router.push('/quests')}
+                            >
+                                <Ionicons name="shield-checkmark" size={18} color="#A78BFF" />
+                                <Text style={styles.mapPillText}>Missões</Text>
+                            </Pressable>
 
-                        <Pressable 
-                            style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#333', elevation: 8 }]}
-                            onPress={() => setShowSOSConfirm(true)}
-                        >
-                            <Ionicons name="shield" size={18} color="#FF4444" />
-                            <Text style={styles.mapPillText}>SOS</Text>
-                        </Pressable>
+                            <Pressable 
+                                style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#333', elevation: 8 }]}
+                                onPress={() => setShowSOSConfirm(true)}
+                            >
+                                <Ionicons name="shield" size={18} color="#FF4444" />
+                                <Text style={styles.mapPillText}>SOS</Text>
+                            </Pressable>
+
+                        </ScrollView>
                     </Animated.View>
                 </View>
 
                 {showMemberDetail && selectedMember ? (
-                    <ScrollView>
-                        <Pressable onPress={() => setShowMemberDetail(false)} style={{ padding: 20 }}>
-                            <Text style={{ color: '#A78BFF', fontWeight: '700' }}>← Voltar</Text>
+                    <View style={{ flex: 1 }}>
+                        <Pressable onPress={() => setShowMemberDetail(false)} style={{ padding: 20, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Ionicons name="chevron-back" size={24} color="#A78BFF" />
+                            <Text style={{ color: '#A78BFF', fontWeight: '700', fontSize: 16 }}>Voltar para a lista</Text>
                         </Pressable>
-                        <View style={{ paddingHorizontal: 20 }}>
-                            <Text style={{ fontSize: 24, fontWeight: '800', color: '#FFF' }}>{selectedMember.name}</Text>
-                            <Text style={{ color: '#AAA' }}>{selectedMember.location}</Text>
-                        </View>
-                    </ScrollView>
+                        
+                        <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+                            <View style={{ alignItems: 'center', marginTop: 10 }}>
+                                <View style={{ width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: selectedMember.online ? '#4ADE80' : '#333', overflow: 'hidden', backgroundColor: '#2C2C31' }}>
+                                    {selectedMember.avatar ? (
+                                        <Image source={{ uri: selectedMember.avatar }} style={{ width: '100%', height: '100%' }} />
+                                    ) : (
+                                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                                            <Text style={{ color: '#FFF', fontSize: 40, fontWeight: '800' }}>{selectedMember.name[0]}</Text>
+                                        </View>
+                                    )}
+                                </View>
+                                
+                                <Text style={{ fontSize: 28, fontWeight: '900', color: '#FFF', marginTop: 16 }}>{selectedMember.name}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: selectedMember.online ? '#4ADE80' : '#888' }} />
+                                    <Text style={{ color: '#AAA', fontSize: 14 }}>{selectedMember.online ? 'Online agora' : 'Desconectado'}</Text>
+                                </View>
+                            </View>
+
+                            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 30, paddingHorizontal: 20 }}>
+                                <Pressable 
+                                    style={{ flex: 1, height: 60, borderRadius: 20, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#444' }}
+                                    onPress={() => handleToggleLike(selectedMember.id)}
+                                >
+                                    <Ionicons 
+                                        name={likedIds.includes(selectedMember.id) ? "heart" : "heart-outline"} 
+                                        size={28} 
+                                        color={likedIds.includes(selectedMember.id) ? "#FF4444" : "#FFF"} 
+                                    />
+                                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>{likedIds.includes(selectedMember.id) ? 'Curtiu' : 'Curtir'}</Text>
+                                </Pressable>
+
+                                <Pressable 
+                                    style={{ flex: 1, height: 60, borderRadius: 20, backgroundColor: '#A78BFF', alignItems: 'center', justifyContent: 'center' }}
+                                    onPress={() => handleOpenChat(selectedMember.id, selectedMember.name, selectedMember.avatar)}
+                                >
+                                    <Ionicons name="chatbubble-ellipses" size={28} color="#FFF" />
+                                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>Chat</Text>
+                                </Pressable>
+                            </View>
+
+                            <View style={{ padding: 24, marginTop: 20, backgroundColor: '#16161D', borderRadius: 24, marginHorizontal: 20 }}>
+                                <Text style={{ color: '#888', fontWeight: '800', fontSize: 12, letterSpacing: 1, marginBottom: 16 }}>INFORMAÇÕES DO EXPLORADOR</Text>
+                                
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Ionicons name="location" size={20} color="#A78BFF" />
+                                    </View>
+                                    <View>
+                                        <Text style={{ color: '#FFF', fontWeight: '700' }}>Localização</Text>
+                                        <Text style={{ color: '#AAA', fontSize: 13 }}>{selectedMember.hasLocation ? `${selectedMember.lat.toFixed(4)}, ${selectedMember.lon.toFixed(4)}` : 'Oculta pelo usuário'}</Text>
+                                    </View>
+                                </View>
+
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Ionicons name="time" size={20} color="#A78BFF" />
+                                    </View>
+                                    <View>
+                                        <Text style={{ color: '#FFF', fontWeight: '700' }}>Última Atividade</Text>
+                                        <Text style={{ color: '#AAA', fontSize: 13 }}>{selectedMember.since}</Text>
+                                    </View>
+                                </View>
+                            </View>
+                        </ScrollView>
+                    </View>
                 ) : (
                     <>
                         <View style={styles.categoryTabs}>
                             <Pressable 
-                                style={[styles.categoryTab, { backgroundColor: isSynced ? '#A78BFF' : '#2C2C31' }]} 
-                                onPress={handleSyncPress}
+                                style={[styles.categoryTab, { backgroundColor: '#2C2C31' }]} 
+                                onPress={handleSocialRadarScan}
                             >
-                                <Ionicons name="people" size={20} color={isSynced ? "#FFF" : "#AAA"} />
-                                {pendingFriendsCount > 0 && !isSynced && (
-                                    <View style={{ 
-                                        position: 'absolute', 
-                                        top: 8, 
-                                        right: 8, 
-                                        width: 8, 
-                                        height: 8, 
-                                        borderRadius: 4, 
-                                        backgroundColor: '#FF4444',
-                                        borderWidth: 1.5,
-                                        borderColor: '#A78BFF'
-                                    }} />
-                                )}
+                                <Ionicons name="wifi" size={20} color="#60A5FA" />
                             </Pressable>
                             <Pressable 
                                 style={[styles.categoryTab, { backgroundColor: '#2C2C31' }]} 
                                 onPress={() => router.push('/pet-home')}
                             >
-                                <Ionicons name="paw" size={20} color="#AAA" />
+                                <Ionicons name="paw" size={20} color="#4CAF50" />
                             </Pressable>
                             <Pressable 
-                                style={[styles.categoryTab, { backgroundColor: '#2C2C31' }]} 
+                                style={[styles.categoryTab, { backgroundColor: showBackpack ? '#A78BFF' : '#2C2C31' }]} 
                                 onPress={handleBackpackPress}
                             >
-                                <Ionicons name="bag-handle" size={20} color="#AAA" />
+                                <Ionicons name="bag-handle-outline" size={20} color={showBackpack ? "#FFF" : "#FF4444"} />
                             </Pressable>
                             <Pressable 
                                 style={[styles.categoryTab, { backgroundColor: radarTimer > 0 ? '#444' : '#2C2C31' }]} 
                                 onPress={handleRadarPress}
                             >
-                                <Ionicons name="map" size={20} color={radarTimer > 0 ? "#666" : "#AAA"} />
+                                <MaterialCommunityIcons name="treasure-chest" size={22} color={radarTimer > 0 ? "#666" : "#FFD700"} />
                                 {radarTimer > 0 && (
                                     <View style={{ position: 'absolute', bottom: -12 }}>
                                         <Text style={{ fontSize: 9, color: '#AAA', fontWeight: '800' }}>
-                                            {Math.floor(radarTimer / 60)}m
+                                            {radarTimer < 60 ? `${radarTimer}s` : `${Math.floor(radarTimer / 60)}m`}
                                         </Text>
                                     </View>
                                 )}
@@ -932,8 +1276,12 @@ export default function MapScreen() {
                         </View>
                         <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
                             <Pressable style={styles.memberRow}>
-                                <View style={[styles.memberAvatar, { borderColor: '#A78BFF' }]}>
-                                    <Ionicons name="person" size={22} color="#A78BFF" />
+                                <View style={[styles.memberAvatar, { borderColor: '#4ADE80', overflow: 'hidden' }]}>
+                                    {userAvatarUri ? (
+                                        <Image source={{ uri: userAvatarUri }} style={{ width: '100%', height: '100%' }} />
+                                    ) : (
+                                        <Ionicons name="person" size={22} color="#A78BFF" />
+                                    )}
                                 </View>
                                 <View style={styles.memberInfo}>
                                     <Text style={{ color: '#FFF', fontWeight: '800' }}>Você</Text>
@@ -944,18 +1292,46 @@ export default function MapScreen() {
                                 </View>
                             </Pressable>
 
-                            {circleMembers.map(m => (
-                                <Pressable key={m.id} style={styles.memberRow} onPress={() => handleMemberTap(m)}>
-                                    <View style={[styles.memberAvatar, { borderColor: m.online ? '#A78BFF' : '#333' }]}>
-                                        <Text style={{ color: '#A78BFF', fontWeight: '800' }}>{m.name[0]}</Text>
+                            {circleMembers.map(m => {
+                                const isLiked = likedIds.includes(m.id);
+                                return (
+                                    <View key={m.id} style={styles.memberRow}>
+                                        <Pressable 
+                                            style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 16 }}
+                                            onPress={() => handleMemberTap(m)}
+                                        >
+                                            <View style={[styles.memberAvatar, { borderColor: m.online ? '#4ADE80' : '#333', overflow: 'hidden' }]}>
+                                                {m.avatar ? (
+                                                    <Image source={{ uri: m.avatar }} style={{ width: '100%', height: '100%' }} />
+                                                ) : (
+                                                    <Text style={{ color: m.online ? '#A78BFF' : '#555', fontWeight: '800' }}>{m.name[0]}</Text>
+                                                )}
+                                            </View>
+                                            <View style={styles.memberInfo}>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                    <Text style={{ color: '#FFF', fontWeight: '800' }}>{m.name}</Text>
+                                                </View>
+                                                <Text style={{ color: '#AAA', fontSize: 11 }}>
+                                                    {m.hasLocation ? `${m.lat.toFixed(4)}, ${m.lon.toFixed(4)}` : 'Localização oculta'}
+                                                </Text>
+                                            </View>
+                                        </Pressable>
+
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                            <AnimatedLikeButton 
+                                                isLiked={isLiked} 
+                                                onToggle={() => handleToggleLike(m.id)} 
+                                            />
+                                            <Pressable onPress={() => handleOpenChat(m.id, m.name, m.avatar)}>
+                                                <Ionicons name="chatbubble-ellipses-outline" size={22} color="#AAA" />
+                                            </Pressable>
+                                            <Pressable onPress={() => handleMemberTap(m)}>
+                                                <Ionicons name="chevron-forward" size={18} color="#444" />
+                                            </Pressable>
+                                        </View>
                                     </View>
-                                    <View style={styles.memberInfo}>
-                                        <Text style={{ color: '#FFF', fontWeight: '800' }}>{m.name}</Text>
-                                        <Text style={{ color: '#AAA' }}>{m.lat.toFixed(4)}, {m.lon.toFixed(4)}</Text>
-                                    </View>
-                                    <Ionicons name="chevron-forward" size={18} color="#444" />
-                                </Pressable>
-                            ))}
+                                );
+                            })}
                         </ScrollView>
                     </>
                 )}
@@ -997,60 +1373,119 @@ export default function MapScreen() {
                 visible={showBackpack}
                 transparent={true}
                 animationType="slide"
+                statusBarTranslucent={true}
                 onRequestClose={() => setShowBackpack(false)}
             >
-                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center' }}>
-                    <View style={{ 
-                        margin: 20, 
-                        backgroundColor: '#141419', 
-                        borderRadius: 32, 
-                        padding: 24, 
-                        maxHeight: '70%',
-                        borderWidth: 1,
-                        borderColor: '#333'
-                    }}>
+                <View style={{ flex: 1, backgroundColor: '#141419' }}>
+                    <SafeAreaView style={{ flex: 1 }}>
+                        <View 
+                            style={{ 
+                                flex: 1,
+                                padding: 24, 
+                            }} 
+                        >
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                            <Text style={{ color: '#FFF', fontSize: 22, fontWeight: '900' }}>Sua Mochila</Text>
-                            <Pressable onPress={() => setShowBackpack(false)}>
-                                <Ionicons name="close-circle" size={32} color="#444" />
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                <Ionicons name="bag-handle" size={24} color="#FF4444" />
+                                <Text style={{ color: '#FFF', fontSize: 22, fontWeight: '900' }}>Sua Mochila</Text>
+                            </View>
+                            <Pressable 
+                                onPress={() => setShowBackpack(false)}
+                                style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                <Ionicons name="close" size={20} color="#AAA" />
                             </Pressable>
                         </View>
 
-                        <ScrollView>
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                                {inventoryItems.filter(id => ['apple','meat','milk','xp_potion_small','golden_meat'].includes(id)).map((id, index) => (
-                                    <Pressable 
-                                        key={`${id}-${index}`} 
-                                        style={{ 
-                                            width: '30%', 
-                                            aspectRatio: 1, 
-                                            backgroundColor: '#1C1C21', 
-                                            borderRadius: 16, 
-                                            alignItems: 'center', 
-                                            justifyContent: 'center',
-                                            borderWidth: 1,
-                                            borderColor: '#333'
-                                        }}
-                                        onPress={() => handleUseItem(id)}
-                                    >
-                                        <Ionicons 
-                                            name={id === 'apple' ? 'nutrition' : (id === 'meat' ? 'restaurant' : (id === 'milk' ? 'cafe' : 'flask'))} 
-                                            size={32} color="#A78BFF" 
-                                        />
-                                        <Text style={{ color: '#AAA', fontSize: 10, marginTop: 4 }}>Usar</Text>
-                                    </Pressable>
-                                ))}
-                                {inventoryItems.filter(id => ['apple','meat','milk','xp_potion_small','golden_meat'].includes(id)).length === 0 && (
-                                    <Text style={{ color: '#666', textAlign: 'center', width: '100%', padding: 40 }}>Sua mochila está vazia...</Text>
+                        <ScrollView 
+                            showsVerticalScrollIndicator={false}
+                            nestedScrollEnabled={true}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <View style={{ gap: 2 }}>
+                                {Object.entries(inventoryItems.reduce((acc, id) => {
+                                    acc[id] = (acc[id] || 0) + 1;
+                                    return acc;
+                                }, {} as Record<string, number>))
+                                    .filter(([id]) => CATALOG.find(c => c.id === id)?.tab === 'consumable')
+                                    .map(([id, quantity]: [string, any], index) => {
+                                        const itemDef = CATALOG.find(c => (c as any).id === id);
+                                        if (!itemDef) return null;
+                                        
+                                        return (
+                                            <View 
+                                                key={`${id}-${index}`} 
+                                                style={{ 
+                                                    width: '100%', 
+                                                    flexDirection: 'row',
+                                                    backgroundColor: '#1C1C21', 
+                                                    borderRadius: 20, 
+                                                    padding: 16,
+                                                    alignItems: 'center',
+                                                    borderWidth: 1,
+                                                    borderColor: '#333',
+                                                    marginBottom: 12
+                                                }}
+                                            >
+                                                {/* Icone à Esquerda */}
+                                                <View style={{ 
+                                                    width: 52, 
+                                                    height: 52, 
+                                                    borderRadius: 14, 
+                                                    backgroundColor: '#2C2C31', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'center',
+                                                    borderWidth: 1,
+                                                    borderColor: '#444'
+                                                }}>
+                                                    <Ionicons name={(itemDef as any).icon} size={28} color="#A78BFF" />
+                                                    {quantity > 1 && (
+                                                        <View style={{ position: 'absolute', top: -8, right: -8, backgroundColor: '#FFD700', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: '#000' }}>
+                                                            <Text style={{ color: '#000', fontSize: 10, fontWeight: '900' }}>x{quantity}</Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                                
+                                                {/* Nome e Descrição Centralizados */}
+                                                <View style={{ flex: 1, marginLeft: 16 }}>
+                                                    <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '900' }}>{itemDef.name}</Text>
+                                                    <Text style={{ color: '#AAA', fontSize: 12, marginTop: 2, lineHeight: 16 }}>{(itemDef as any).description}</Text>
+                                                </View>
+
+                                                {/* Botão de Ação à Direita */}
+                                                <Pressable 
+                                                    style={({ pressed }) => ({ 
+                                                        backgroundColor: pressed ? '#8B5CF6' : '#A78BFF', 
+                                                        paddingHorizontal: 16, 
+                                                        paddingVertical: 10, 
+                                                        borderRadius: 14,
+                                                        marginLeft: 8,
+                                                        elevation: 4,
+                                                        shadowColor: '#A78BFF',
+                                                        shadowOffset: { width: 0, height: 4 },
+                                                        shadowOpacity: 0.3,
+                                                        shadowRadius: 8
+                                                    })}
+                                                    onPress={() => handleUseItem(id)}
+                                                >
+                                                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 13 }}>Utilizar</Text>
+                                                </Pressable>
+                                            </View>
+                                        );
+                                    })
+                                }
+                                {inventoryItems.filter(id => CATALOG.find(c => c.id === id)?.tab === 'consumable').length === 0 && (
+                                    <Text style={{ color: '#666', textAlign: 'center', width: '100%', padding: 40 }}>Sua mochila não possui itens consumíveis...</Text>
                                 )}
                             </View>
                         </ScrollView>
                         
-                        <Text style={{ color: '#444', fontSize: 11, textAlign: 'center', marginTop: 20 }}>
-                            Toque em um item para consumir e ganhar bônus instantâneos.
+                        <Text style={{ color: '#555', fontSize: 11, textAlign: 'center', marginTop: 20 }}>
+                            Toque num item consumível para usar • Deslize para baixo ou use o X para fechar
                         </Text>
                     </View>
-                </View>
+                </SafeAreaView>
+            </View>
             </Modal>
             
             <Modal
@@ -1166,6 +1601,52 @@ export default function MapScreen() {
                 </Animated.View>
             )}
 
+            {/* Modal Radar Social */}
+            <Modal visible={showSocialRadar} transparent animationType="fade">
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+                    {!discoveredUsers.length ? (
+                        <View style={{ alignItems: 'center' }}>
+                            <Animated.View style={{
+                                width: 150, height: 150, borderRadius: 75,
+                                backgroundColor: '#60A5FA', opacity: radarAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] }),
+                                transform: [{ scale: radarAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 2] }) }],
+                                position: 'absolute'
+                            }} />
+                            <Ionicons name="wifi" size={48} color="#60A5FA" />
+                            <Text style={{ color: '#FFF', fontSize: 18, marginTop: 40, fontWeight: '800' }}>Buscando conexões...</Text>
+                            <Text style={{ color: '#60A5FA', fontSize: 13, marginTop: 8 }}>Varrendo raio de 1km</Text>
+                        </View>
+                    ) : (
+                        <View style={{ width: '85%', backgroundColor: '#1C1C21', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#60A5FA' }}>
+                            <Text style={{ fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 16 }}>{discoveredUsers.length} Pessoas Próximas</Text>
+                            <ScrollView style={{ maxHeight: 300 }}>
+                                {discoveredUsers.map((u, i) => (
+                                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#333' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#60A5FA' }}>
+                                                <Text style={{ color: '#FFF', fontWeight: '800' }}>{u.name[0]}</Text>
+                                            </View>
+                                            <View>
+                                                <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 16 }}>{u.name}</Text>
+                                                <Text style={{ color: '#AAA', fontSize: 11 }}>
+                                                    {u.dist < 100 ? 'Muito perto de você' : `A ${Math.round(u.dist)}m de distância`}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        <Pressable style={{ backgroundColor: '#60A5FA', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }} onPress={() => Alert.alert('Pedido Enviado!', `Pedido de amizade enviado para ${u.name}.`)}>
+                                            <Text style={{ color: '#000', fontWeight: '800', fontSize: 12 }}>Adicionar</Text>
+                                        </Pressable>
+                                    </View>
+                                ))}
+                            </ScrollView>
+                            <Pressable style={{ marginTop: 12, alignItems: 'center', padding: 12 }} onPress={() => { setShowSocialRadar(false); setDiscoveredUsers([]); }}>
+                                <Text style={{ color: '#AAA', fontWeight: '700' }}>Fechar</Text>
+                            </Pressable>
+                        </View>
+                    )}
+                </View>
+            </Modal>
+
             {/* Modal de Confirmação de SOS */}
             <Modal
                 visible={showSOSConfirm}
@@ -1233,6 +1714,357 @@ export default function MapScreen() {
                 points={mergePoints.length > 0 ? mergePoints : [{ x: SCREEN_WIDTH/2, y: SCREEN_HEIGHT/2 }, { x: SCREEN_WIDTH/2 + 20, y: SCREEN_HEIGHT/2 + 20 }]}
                 color={colors.primary}
             />
+
+            {/* Modal de Sucesso do Farejo */}
+            <Modal
+                visible={showRadarModal}
+                transparent={true}
+                animationType="fade"
+                statusBarTranslucent={true}
+                onRequestClose={() => setShowRadarModal(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ 
+                        width: '85%', 
+                        backgroundColor: '#1C1C21', 
+                        borderRadius: 32, 
+                        padding: 32, 
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: '#FFD70033',
+                        shadowColor: '#FFD700',
+                        shadowOffset: { width: 0, height: 10 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 20,
+                        elevation: 10
+                    }}>
+                        <View style={{ 
+                            width: 100, 
+                            height: 100, 
+                            borderRadius: 50, 
+                            backgroundColor: '#FFD70015', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            marginBottom: 24
+                        }}>
+                            <MaterialCommunityIcons name="treasure-chest" size={56} color="#FFD700" />
+                        </View>
+                        
+                        <Text style={{ fontSize: 26, fontWeight: '900', color: '#FFF', marginBottom: 12, textAlign: 'center' }}>Farejo Ativo!</Text>
+                        <Text style={{ fontSize: 16, color: '#AAA', textAlign: 'center', marginBottom: 32, lineHeight: 24 }}>
+                            Seu pet farejou rastros de tesouros! Verifique os ícones de baú que apareceram no seu mapa.
+                        </Text>
+
+                        <Pressable 
+                            style={{ 
+                                width: '100%', 
+                                backgroundColor: '#FFD700', 
+                                paddingVertical: 18, 
+                                borderRadius: 20, 
+                                alignItems: 'center',
+                                shadowColor: '#FFD700',
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.4,
+                                shadowRadius: 8
+                            }}
+                            onPress={() => setShowRadarModal(false)}
+                        >
+                            <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>VAMOS BUSCAR!</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal de Cooldown do Farejo */}
+            <Modal
+                visible={showCooldownModal}
+                transparent={true}
+                animationType="fade"
+                statusBarTranslucent={true}
+                onRequestClose={() => setShowCooldownModal(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ 
+                        width: '85%', 
+                        backgroundColor: '#1C1C21', 
+                        borderRadius: 32, 
+                        padding: 32, 
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: '#66666633'
+                    }}>
+                        <View style={{ 
+                            width: 100, 
+                            height: 100, 
+                            borderRadius: 50, 
+                            backgroundColor: '#66666620', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            marginBottom: 24
+                        }}>
+                            <Ionicons name="bed-outline" size={56} color="#8E8E9A" />
+                        </View>
+                        
+                        <Text style={{ fontSize: 26, fontWeight: '900', color: '#FFF', marginBottom: 12, textAlign: 'center' }}>Pet Cansado</Text>
+                        <Text style={{ fontSize: 16, color: '#AAA', textAlign: 'center', marginBottom: 32, lineHeight: 24 }}>
+                            O pet ainda está descansando do último farejo. Volte em {radarTimer < 60 ? `${radarTimer}s` : `${Math.floor(radarTimer / 60)}m ${radarTimer % 60}s`}.
+                        </Text>
+
+                        <Pressable 
+                            style={{ 
+                                width: '100%', 
+                                backgroundColor: '#2C2C31', 
+                                paddingVertical: 18, 
+                                borderRadius: 20, 
+                                alignItems: 'center',
+                                borderWidth: 1,
+                                borderColor: '#444'
+                            }}
+                            onPress={() => setShowCooldownModal(false)}
+                        >
+                            <Text style={{ color: '#AAA', fontWeight: '900', fontSize: 16 }}>ENTENDIDO</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal de Feedback de Uso de Item */}
+            <Modal
+                visible={showItemUsedModal}
+                transparent={true}
+                animationType="fade"
+                statusBarTranslucent={true}
+                onRequestClose={() => setShowItemUsedModal(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ 
+                        width: '80%', 
+                        backgroundColor: '#1C1C21', 
+                        borderRadius: 32, 
+                        padding: 32, 
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: '#A78BFF33'
+                    }}>
+                        <View style={{ 
+                            width: 80, 
+                            height: 80, 
+                            borderRadius: 40, 
+                            backgroundColor: '#A78BFF15', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            marginBottom: 20
+                        }}>
+                            {usedItemData?.iconLib === 'MaterialCommunityIcons' ? (
+                                <MaterialCommunityIcons name={usedItemData?.icon} size={40} color="#A78BFF" />
+                            ) : (
+                                <Ionicons name={usedItemData?.icon || 'sparkles'} size={40} color="#A78BFF" />
+                            )}
+                        </View>
+                        
+                        <Text style={{ fontSize: 22, fontWeight: '900', color: '#FFF', marginBottom: 8, textAlign: 'center' }}>Item Usado!</Text>
+                        <Text style={{ fontSize: 15, color: '#AAA', textAlign: 'center', marginBottom: 24, lineHeight: 22 }}>
+                            Você consumiu <Text style={{ color: '#FFF', fontWeight: '700' }}>{usedItemData?.name}</Text> e ganhou um bônus de <Text style={{ color: '#A78BFF', fontWeight: '800' }}>{usedItemData?.amount} {usedItemData?.type}</Text>!
+                        </Text>
+
+                        <Pressable 
+                            style={{ 
+                                width: '100%', 
+                                backgroundColor: '#A78BFF', 
+                                paddingVertical: 14, 
+                                borderRadius: 16, 
+                                alignItems: 'center'
+                            }}
+                            onPress={() => setShowItemUsedModal(false)}
+                        >
+                            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>EXCELENTE!</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal de Tesouro Encontrado */}
+            <Modal
+                visible={showTreasureModal}
+                transparent={true}
+                animationType="fade"
+                statusBarTranslucent={true}
+                onRequestClose={() => setShowTreasureModal(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ 
+                        width: '80%', 
+                        backgroundColor: '#1C1C21', 
+                        borderRadius: 32, 
+                        padding: 32, 
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: '#FFD70033'
+                    }}>
+                        <View style={{ 
+                            width: 90, 
+                            height: 90, 
+                            borderRadius: 45, 
+                            backgroundColor: treasureType === 'gems' ? '#60A5FA15' : '#FFD70015', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            marginBottom: 24,
+                            borderWidth: 1,
+                            borderColor: treasureType === 'gems' ? '#60A5FA44' : '#FFD70044'
+                        }}>
+                            <MaterialCommunityIcons 
+                                name={treasureType === 'gems' ? "diamond-stone" : "treasure-chest"} 
+                                size={48} 
+                                color={treasureType === 'gems' ? "#60A5FA" : "#FFD700"} 
+                            />
+                        </View>
+                        
+                        <Text style={{ fontSize: 24, fontWeight: '900', color: '#FFF', marginBottom: 8, textAlign: 'center' }}>
+                            {treasureType === 'gems' ? 'GEMAS ENCONTRADAS!' : 'BAÚ ENCONTRADO!'}
+                        </Text>
+                        <Text style={{ fontSize: 16, color: '#AAA', textAlign: 'center', marginBottom: 28, lineHeight: 24 }}>
+                            Parabéns! Você descobriu um tesouro perdido e ganhou <Text style={{ color: treasureType === 'gems' ? '#60A5FA' : '#FFD700', fontWeight: '900' }}>{treasureAmount} {treasureType === 'gems' ? 'WanderGems' : 'Moedas'}</Text>!
+                        </Text>
+
+                        <Pressable 
+                            style={{ 
+                                width: '100%', 
+                                backgroundColor: treasureType === 'gems' ? '#60A5FA' : '#FFD700', 
+                                paddingVertical: 16, 
+                                borderRadius: 16, 
+                                alignItems: 'center',
+                                elevation: 8,
+                                shadowColor: treasureType === 'gems' ? '#60A5FA' : '#FFD700',
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.4,
+                                shadowRadius: 10
+                            }}
+                            onPress={() => setShowTreasureModal(false)}
+                        >
+                            <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>COLETAR</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* MODAL: CHAT INTEGRADO */}
+            <Modal 
+                visible={isChatVisible} 
+                animationType="slide" 
+                onRequestClose={() => setIsChatVisible(false)}
+            >
+                <SafeAreaView style={{ flex: 1, backgroundColor: isDarkMode ? '#121218' : '#F7F7FA' }}>
+                    {(() => {
+                        const targetMember = circleMembers.find(m => m.id === chatTarget?.id);
+                        const isOnline = targetMember?.online || false;
+                        return (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: isDarkMode ? '#333' : '#EEE', backgroundColor: isDarkMode ? '#1C1C21' : '#FFF' }}>
+                                <Pressable onPress={() => setIsChatVisible(false)} style={{ padding: 8 }}>
+                                    <Ionicons name="chevron-back" size={24} color={colors.primary} />
+                                </Pressable>
+                                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#2C2C31', overflow: 'hidden', marginHorizontal: 12 }}>
+                                    {chatTarget?.avatar ? (
+                                        <Image source={{ uri: chatTarget.avatar }} style={{ width: '100%', height: '100%' }} />
+                                    ) : (
+                                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                                            <Text style={{ color: '#FFF', fontWeight: '800' }}>{chatTarget?.name ? chatTarget.name[0] : '?'}</Text>
+                                        </View>
+                                    )}
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>{chatTarget?.name}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isOnline ? '#4ADE80' : '#888' }} />
+                                        <Text style={{ fontSize: 12, color: isOnline ? '#4ADE80' : colors.subtext }}>
+                                            {isOnline ? 'Online agora' : 'Offline'}
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+                        );
+                    })()}
+
+                    <ScrollView 
+                        ref={chatScrollRef}
+                        style={{ flex: 1, padding: 16 }}
+                        onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+                    >
+                        {chatMessages.map((msg) => {
+                            const isMe = msg.senderId === 'me';
+                            return (
+                                <View key={msg.id} style={{ 
+                                    alignSelf: isMe ? 'flex-end' : 'flex-start', 
+                                    backgroundColor: isMe ? colors.primary : (isDarkMode ? '#2C2C31' : '#FFF'), 
+                                    paddingHorizontal: 16, 
+                                    paddingVertical: 10, 
+                                    borderRadius: 20, 
+                                    borderBottomRightRadius: isMe ? 4 : 20,
+                                    borderBottomLeftRadius: isMe ? 20 : 4,
+                                    marginBottom: 12,
+                                    maxWidth: '80%',
+                                    elevation: 2,
+                                    shadowColor: '#000',
+                                    shadowOffset: { width: 0, height: 2 },
+                                    shadowOpacity: 0.1,
+                                    shadowRadius: 4
+                                }}>
+                                    <Text style={{ color: isMe ? '#FFF' : colors.text, fontSize: 15 }}>{msg.text}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 }}>
+                                        <Text style={{ color: isMe ? 'rgba(255,255,255,0.6)' : colors.subtext, fontSize: 10 }}>
+                                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </Text>
+                                        {isMe && <Ionicons name="checkmark-done" size={12} color="rgba(255,255,255,0.6)" />}
+                                    </View>
+                                </View>
+                            );
+                        })}
+                        {isOtherTyping && <TypingIndicator />}
+                    </ScrollView>
+
+                    <View style={{ padding: 16, backgroundColor: isDarkMode ? '#1C1C21' : '#FFF', borderTopWidth: 1, borderTopColor: isDarkMode ? '#333' : '#EEE' }}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                            {QUICK_MESSAGES.map(q => (
+                                <Pressable 
+                                    key={q.id} 
+                                    onPress={() => { setChatInput(q.text); handleSendMessage(); }}
+                                    style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDarkMode ? '#2C2C31' : '#F0F0F0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8, gap: 6 }}
+                                >
+                                    <Ionicons name={q.icon as any} size={14} color={q.color} />
+                                    <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>{q.text}</Text>
+                                </Pressable>
+                            ))}
+                        </ScrollView>
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <TextInput 
+                                style={{ 
+                                    flex: 1, 
+                                    backgroundColor: isDarkMode ? '#2C2C31' : '#F0F0F0', 
+                                    borderRadius: 20, 
+                                    paddingHorizontal: 20, 
+                                    paddingVertical: 12, 
+                                    color: colors.text,
+                                    maxHeight: 100
+                                }}
+                                placeholder="Mensagem..."
+                                placeholderTextColor={colors.subtext}
+                                value={chatInput}
+                                onChangeText={(txt) => {
+                                    setChatInput(txt);
+                                    handleTyping();
+                                }}
+                                multiline
+                            />
+                            <Pressable 
+                                onPress={handleSendMessage}
+                                style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 4 }}
+                            >
+                                <Ionicons name="send" size={20} color="#FFF" />
+                            </Pressable>
+                        </View>
+                    </View>
+                </SafeAreaView>
+            </Modal>
         </View>
     );
 }
@@ -1262,4 +2094,7 @@ const styles = StyleSheet.create({
     memberRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, gap: 16 },
     memberAvatar: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2C2C31' },
     memberInfo: { flex: 1 },
+    // Estilos de Chat Integrado
+    chatBubble: { padding: 12, borderRadius: 16, marginBottom: 8, maxWidth: '80%' },
+    quickMsgBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginRight: 8, borderWidth: 1 },
 });

@@ -134,20 +134,20 @@ export default function PetHomeScreen() {
     const renderHeader = () => (
         <View style={styles.header}>
             <Pressable onPress={() => router.back()} style={styles.backBtn}>
-                <Ionicons name="arrow-back" size={24} color="#FFF" />
+                <Ionicons name="chevron-back" size={20} color="#FFF" />
             </Pressable>
             
             <View style={styles.statsRow}>
-                <View style={[styles.statBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                    <Ionicons name="heart" size={16} color="#FF6B6B" />
+                <View style={[styles.statBadge, { backgroundColor: '#1C1C21', borderColor: '#FF444444', borderWidth: 1 }]}>
+                    <Ionicons name="heart" size={13} color="#FF4444" />
                     <Text style={styles.statText}>{happiness}%</Text>
                 </View>
-                <View style={[styles.statBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                    <MaterialCommunityIcons name="lightning-bolt" size={16} color="#FFD700" />
+                <View style={[styles.statBadge, { backgroundColor: '#1C1C21', borderColor: '#FFD70044', borderWidth: 1 }]}>
+                    <MaterialCommunityIcons name="lightning-bolt" size={14} color="#FFD700" />
                     <Text style={styles.statText}>{energy}%</Text>
                 </View>
-                <View style={[styles.statBadge, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                    <FontAwesome5 name="coins" size={14} color="#FFD700" />
+                <View style={[styles.statBadge, { backgroundColor: '#1C1C21', borderColor: '#A78BFF44', borderWidth: 1 }]}>
+                    <Ionicons name="wallet" size={13} color="#A78BFF" />
                     <Text style={styles.statText}>{coins}</Text>
                 </View>
             </View>
@@ -241,9 +241,8 @@ export default function PetHomeScreen() {
     );
 
     return (
-        <LinearGradient 
-            colors={isDarkMode ? ['#1A1A2E', '#16213E'] : ['#F0F4FA', '#FFF']} 
-            style={styles.container}
+        <View 
+            style={[styles.container, { backgroundColor: '#141419' }]}
         >
             <SafeAreaView style={{ flex: 1 }}>
                 {renderHeader()}
@@ -260,26 +259,26 @@ export default function PetHomeScreen() {
                         onPress={() => setActiveTab('home')} 
                         style={[styles.navItem, activeTab === 'home' && styles.navItemActive]}
                     >
-                        <Ionicons name="home" size={22} color={activeTab === 'home' ? '#FFF' : '#888'} />
-                        <Text style={[styles.navText, { color: activeTab === 'home' ? '#FFF' : '#888' }]}>Início</Text>
+                        <Ionicons name="home" size={20} color={activeTab === 'home' ? '#FFF' : '#888'} />
+                        <Text style={[styles.navText, { color: activeTab === 'home' ? '#FFF' : '#888' }]}>Lar</Text>
                     </Pressable>
                     <Pressable 
                         onPress={() => setActiveTab('wardrobe')} 
                         style={[styles.navItem, activeTab === 'wardrobe' && styles.navItemActive]}
                     >
-                        <Ionicons name="shirt" size={22} color={activeTab === 'wardrobe' ? '#FFF' : '#888'} />
-                        <Text style={[styles.navText, { color: activeTab === 'wardrobe' ? '#FFF' : '#888' }]}>Roupas</Text>
+                        <Ionicons name="shirt" size={20} color={activeTab === 'wardrobe' ? '#FFF' : '#888'} />
+                        <Text style={[styles.navText, { color: activeTab === 'wardrobe' ? '#FFF' : '#888' }]}>Estilo</Text>
                     </Pressable>
                     <Pressable 
                         onPress={() => setActiveTab('train')} 
                         style={[styles.navItem, activeTab === 'train' && styles.navItemActive]}
                     >
-                        <MaterialCommunityIcons name="sword-cross" size={22} color={activeTab === 'train' ? '#FFF' : '#888'} />
+                        <MaterialCommunityIcons name="sword-cross" size={20} color={activeTab === 'train' ? '#FFF' : '#888'} />
                         <Text style={[styles.navText, { color: activeTab === 'train' ? '#FFF' : '#888' }]}>Treino</Text>
                     </Pressable>
                 </View>
             </SafeAreaView>
-        </LinearGradient>
+        </View>
     );
 }
 
@@ -290,7 +289,8 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between', 
         alignItems: 'center', 
         paddingHorizontal: 20, 
-        paddingVertical: 10 
+        paddingTop: 50, 
+        paddingBottom: 10 
     },
     backBtn: { 
         width: 40, 
@@ -322,26 +322,31 @@ const styles = StyleSheet.create({
         marginTop: -10 
     },
     infoCard: { 
-        backgroundColor: 'rgba(255,255,255,0.05)', 
-        padding: 25, 
-        borderRadius: 30, 
-        width: '85%', 
+        backgroundColor: '#1C1C21', 
+        padding: 24, 
+        borderRadius: 32, 
+        width: '90%', 
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)'
+        borderColor: '#333',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 10
     },
-    petName: { fontSize: 28, fontWeight: '900', color: '#A78BFF' },
-    petSubtitle: { fontSize: 14, color: '#888', marginTop: 5, fontWeight: '600' },
+    petName: { fontSize: 28, fontWeight: '900', color: '#FFF' },
+    petSubtitle: { fontSize: 14, color: '#AAA', marginTop: 5, fontWeight: '700' },
     xpBarContainer: { 
         width: '100%', 
         height: 10, 
-        backgroundColor: 'rgba(0,0,0,0.2)', 
+        backgroundColor: '#2C2C31', 
         borderRadius: 5, 
-        marginTop: 20, 
+        marginTop: 24, 
         overflow: 'hidden' 
     },
     xpBarFill: { height: '100%', backgroundColor: '#A78BFF' },
-    xpText: { fontSize: 11, color: '#666', marginTop: 8, fontWeight: '700' },
+    xpText: { fontSize: 11, color: '#AAA', marginTop: 10, fontWeight: '800' },
 
     // Wardrobe & Train
     sectionTitle: { fontSize: 24, fontWeight: '900', color: '#A78BFF', margin: 25 },

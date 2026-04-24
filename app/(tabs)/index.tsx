@@ -23,6 +23,7 @@ import { isValidUUID } from '@/services/AuthService';
 import { clusterPlayers, MarkerData, PlayerData } from '@/utils/clusterPlayers';
 import { MergedMarker } from '@/components/MergedMarker';
 import { LiquidMergeOverlay } from '@/components/LiquidMergeOverlay';
+import { CATALOG } from '../../constants/catalog';
 
 import { 
     getPetLocal, 
@@ -139,6 +140,31 @@ export default function MapScreen() {
     const [inventoryItems, setInventoryItems] = useState<any[]>([]);
     const [radarTimer, setRadarTimer] = useState(0); // Cooldown em segundos
     const [treasures, setTreasures] = useState<{id: string, lat: number, lon: number, type: 'gold' | 'gem'}[]>([]);
+
+    // Radar Social
+    const [showSocialRadar, setShowSocialRadar] = useState(false);
+    const [radarAnim] = useState(new Animated.Value(0));
+    const [discoveredUsers, setDiscoveredUsers] = useState<any[]>([]);
+
+    const handleSocialRadarScan = () => {
+        setShowSocialRadar(true);
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(radarAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
+                Animated.timing(radarAnim, { toValue: 0, duration: 0, useNativeDriver: true })
+            ])
+        ).start();
+
+        setTimeout(() => {
+            const usersNear = circleMembers.filter(m => calculateDistance(location.latitude, location.longitude, m.lat, m.lon) <= 1000);
+            if (usersNear.length === 0) {
+                usersNear.push({ id: 'mock1', name: 'Lucas P.', lat: location.latitude, lon: location.longitude, online: true });
+                usersNear.push({ id: 'mock2', name: 'Marina Silva', lat: location.latitude, lon: location.longitude, online: true });
+            }
+            setDiscoveredUsers(usersNear);
+            radarAnim.stopAnimation();
+        }, 3000);
+    };
 
     const setupBattery = async () => {
         const level = await Battery.getBatteryLevelAsync();
@@ -282,7 +308,7 @@ export default function MapScreen() {
     }, []);
     
     const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
-    const SHEET_MIN = Math.max(24, insets.bottom + 12);
+    const SHEET_MIN = Math.max(80, insets.bottom + 60);
     const SHEET_MAX = SCREEN_HEIGHT - (insets.top + 200); 
 
     const sheetHeightAnim = useRef(new Animated.Value(SHEET_MIN)).current;
@@ -556,6 +582,7 @@ export default function MapScreen() {
         else if (itemId === 'xp_potion_small') { type = 'xp'; amount = 300; }
         else if (itemId === 'milk') { type = 'happiness'; amount = 20; }
         else if (itemId === 'golden_meat') { type = 'energy'; amount = 100; }
+        else if (itemId === 'xp_potion_mega') { type = 'xp'; amount = 2500; }
 
         await consumeItemLocal(itemId, type, amount);
         loadData(); // Atualiza HUD
@@ -846,29 +873,39 @@ export default function MapScreen() {
                         ]} 
                         pointerEvents="box-none"
                     >
-                        <Pressable 
-                            style={[styles.mapPill, { backgroundColor: isNearSpot ? '#A78BFF' : '#2C2C31', elevation: 8 }]}
-                            onPress={handleCheckIn}
-                        >
-                            <Ionicons name="checkmark-circle" size={18} color={isNearSpot ? "#FFF" : "#666"} />
-                            <Text style={[styles.mapPillText, { color: isNearSpot ? "#FFF" : "#666" }]}>Check-in</Text>
-                        </Pressable>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, gap: 10 }}>
+                            <Pressable 
+                                style={[styles.mapPill, { backgroundColor: isNearSpot ? '#A78BFF' : '#2C2C31', elevation: 8 }]}
+                                onPress={handleCheckIn}
+                            >
+                                <Ionicons name="checkmark-circle" size={18} color={isNearSpot ? "#FFF" : "#666"} />
+                                <Text style={[styles.mapPillText, { color: isNearSpot ? "#FFF" : "#666" }]}>Check-in</Text>
+                            </Pressable>
 
-                        <Pressable 
-                            style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#333', elevation: 8 }]}
-                            onPress={() => router.push('/quests')}
-                        >
-                            <Ionicons name="shield-checkmark" size={18} color="#A78BFF" />
-                            <Text style={styles.mapPillText}>Missões</Text>
-                        </Pressable>
+                            <Pressable 
+                                style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#333', elevation: 8 }]}
+                                onPress={() => router.push('/quests')}
+                            >
+                                <Ionicons name="shield-checkmark" size={18} color="#A78BFF" />
+                                <Text style={styles.mapPillText}>Missões</Text>
+                            </Pressable>
 
-                        <Pressable 
-                            style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#333', elevation: 8 }]}
-                            onPress={() => setShowSOSConfirm(true)}
-                        >
-                            <Ionicons name="shield" size={18} color="#FF4444" />
-                            <Text style={styles.mapPillText}>SOS</Text>
-                        </Pressable>
+                            <Pressable 
+                                style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#333', elevation: 8 }]}
+                                onPress={() => setShowSOSConfirm(true)}
+                            >
+                                <Ionicons name="shield" size={18} color="#FF4444" />
+                                <Text style={styles.mapPillText}>SOS</Text>
+                            </Pressable>
+
+                            <Pressable 
+                                style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#60A5FA', elevation: 8 }]}
+                                onPress={handleSocialRadarScan}
+                            >
+                                <Ionicons name="wifi" size={18} color="#60A5FA" />
+                                <Text style={styles.mapPillText}>Radar</Text>
+                            </Pressable>
+                        </ScrollView>
                     </Animated.View>
                 </View>
 
@@ -886,11 +923,11 @@ export default function MapScreen() {
                     <>
                         <View style={styles.categoryTabs}>
                             <Pressable 
-                                style={[styles.categoryTab, { backgroundColor: isSynced ? '#A78BFF' : '#2C2C31' }]} 
-                                onPress={handleSyncPress}
+                                style={[styles.categoryTab, { backgroundColor: '#2C2C31' }]} 
+                                onPress={() => router.push({ pathname: '/social', params: { tab: 'amigos' } })}
                             >
-                                <Ionicons name="people" size={20} color={isSynced ? "#FFF" : "#AAA"} />
-                                {pendingFriendsCount > 0 && !isSynced && (
+                                <Ionicons name="people" size={20} color="#AAA" />
+                                {pendingFriendsCount > 0 && (
                                     <View style={{ 
                                         position: 'absolute', 
                                         top: 8, 
@@ -900,7 +937,7 @@ export default function MapScreen() {
                                         borderRadius: 4, 
                                         backgroundColor: '#FF4444',
                                         borderWidth: 1.5,
-                                        borderColor: '#A78BFF'
+                                        borderColor: '#2C2C31'
                                     }} />
                                 )}
                             </Pressable>
@@ -911,10 +948,10 @@ export default function MapScreen() {
                                 <Ionicons name="paw" size={20} color="#AAA" />
                             </Pressable>
                             <Pressable 
-                                style={[styles.categoryTab, { backgroundColor: '#2C2C31' }]} 
+                                style={[styles.categoryTab, { backgroundColor: showBackpack ? '#A78BFF' : '#2C2C31' }]} 
                                 onPress={handleBackpackPress}
                             >
-                                <Ionicons name="bag-handle" size={20} color="#AAA" />
+                                <Ionicons name="bag-handle-outline" size={20} color={showBackpack ? "#FFF" : "#AAA"} />
                             </Pressable>
                             <Pressable 
                                 style={[styles.categoryTab, { backgroundColor: radarTimer > 0 ? '#444' : '#2C2C31' }]} 
@@ -999,8 +1036,8 @@ export default function MapScreen() {
                 animationType="slide"
                 onRequestClose={() => setShowBackpack(false)}
             >
-                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center' }}>
-                    <View style={{ 
+                <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center' }} onPress={() => setShowBackpack(false)}>
+                    <Pressable style={{ 
                         margin: 20, 
                         backgroundColor: '#141419', 
                         borderRadius: 32, 
@@ -1008,49 +1045,62 @@ export default function MapScreen() {
                         maxHeight: '70%',
                         borderWidth: 1,
                         borderColor: '#333'
-                    }}>
+                    }} onPress={() => {}}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                            <Text style={{ color: '#FFF', fontSize: 22, fontWeight: '900' }}>Sua Mochila</Text>
-                            <Pressable onPress={() => setShowBackpack(false)}>
-                                <Ionicons name="close-circle" size={32} color="#444" />
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                <Ionicons name="bag-handle" size={24} color="#A78BFF" />
+                                <Text style={{ color: '#FFF', fontSize: 22, fontWeight: '900' }}>Sua Mochila</Text>
+                            </View>
+                            <Pressable 
+                                onPress={() => setShowBackpack(false)}
+                                style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center' }}
+                            >
+                                <Ionicons name="close" size={20} color="#AAA" />
                             </Pressable>
                         </View>
 
                         <ScrollView>
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                                {inventoryItems.filter(id => ['apple','meat','milk','xp_potion_small','golden_meat'].includes(id)).map((id, index) => (
-                                    <Pressable 
-                                        key={`${id}-${index}`} 
-                                        style={{ 
-                                            width: '30%', 
-                                            aspectRatio: 1, 
-                                            backgroundColor: '#1C1C21', 
-                                            borderRadius: 16, 
-                                            alignItems: 'center', 
-                                            justifyContent: 'center',
-                                            borderWidth: 1,
-                                            borderColor: '#333'
-                                        }}
-                                        onPress={() => handleUseItem(id)}
-                                    >
-                                        <Ionicons 
-                                            name={id === 'apple' ? 'nutrition' : (id === 'meat' ? 'restaurant' : (id === 'milk' ? 'cafe' : 'flask'))} 
-                                            size={32} color="#A78BFF" 
-                                        />
-                                        <Text style={{ color: '#AAA', fontSize: 10, marginTop: 4 }}>Usar</Text>
-                                    </Pressable>
-                                ))}
-                                {inventoryItems.filter(id => ['apple','meat','milk','xp_potion_small','golden_meat'].includes(id)).length === 0 && (
+                                {inventoryItems.map((id, index) => {
+                                    const itemDef = CATALOG.find(c => c.id === id);
+                                    if (!itemDef) return null;
+                                    
+                                    const isConsumable = itemDef.tab === 'consumable';
+                                    
+                                    return (
+                                        <Pressable 
+                                            key={`${id}-${index}`} 
+                                            style={{ 
+                                                width: '30%', 
+                                                aspectRatio: 1, 
+                                                backgroundColor: '#1C1C21', 
+                                                borderRadius: 16, 
+                                                alignItems: 'center', 
+                                                justifyContent: 'center',
+                                                borderWidth: 1,
+                                                borderColor: isConsumable ? '#A78BFF' : '#333'
+                                            }}
+                                            onPress={() => isConsumable ? handleUseItem(id) : Alert.alert('Aviso', 'Equipe este acessório através do Perfil ou Loja.')}
+                                        >
+                                            <Ionicons 
+                                                name={itemDef.icon as any} 
+                                                size={32} color={isConsumable ? '#A78BFF' : '#AAA'} 
+                                            />
+                                            <Text style={{ color: '#AAA', fontSize: 10, marginTop: 4, textAlign: 'center' }} numberOfLines={1}>{itemDef.name}</Text>
+                                        </Pressable>
+                                    );
+                                })}
+                                {inventoryItems.length === 0 && (
                                     <Text style={{ color: '#666', textAlign: 'center', width: '100%', padding: 40 }}>Sua mochila está vazia...</Text>
                                 )}
                             </View>
                         </ScrollView>
                         
-                        <Text style={{ color: '#444', fontSize: 11, textAlign: 'center', marginTop: 20 }}>
-                            Toque em um item para consumir e ganhar bônus instantâneos.
+                        <Text style={{ color: '#555', fontSize: 11, textAlign: 'center', marginTop: 20 }}>
+                            Toque num item consumível para usar • Toque fora para fechar
                         </Text>
-                    </View>
-                </View>
+                    </Pressable>
+                </Pressable>
             </Modal>
             
             <Modal
@@ -1165,6 +1215,50 @@ export default function MapScreen() {
                     </Pressable>
                 </Animated.View>
             )}
+
+            {/* Modal Radar Social */}
+            <Modal visible={showSocialRadar} transparent animationType="fade">
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+                    {!discoveredUsers.length ? (
+                        <View style={{ alignItems: 'center' }}>
+                            <Animated.View style={{
+                                width: 150, height: 150, borderRadius: 75,
+                                backgroundColor: '#60A5FA', opacity: radarAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] }),
+                                transform: [{ scale: radarAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 2] }) }],
+                                position: 'absolute'
+                            }} />
+                            <Ionicons name="wifi" size={48} color="#60A5FA" />
+                            <Text style={{ color: '#FFF', fontSize: 18, marginTop: 40, fontWeight: '800' }}>Buscando conexões...</Text>
+                            <Text style={{ color: '#60A5FA', fontSize: 13, marginTop: 8 }}>Varrendo raio de 1km</Text>
+                        </View>
+                    ) : (
+                        <View style={{ width: '85%', backgroundColor: '#1C1C21', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#60A5FA' }}>
+                            <Text style={{ fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 16 }}>{discoveredUsers.length} Pessoas Próximas</Text>
+                            <ScrollView style={{ maxHeight: 300 }}>
+                                {discoveredUsers.map((u, i) => (
+                                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#333' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#60A5FA' }}>
+                                                <Text style={{ color: '#FFF', fontWeight: '800' }}>{u.name[0]}</Text>
+                                            </View>
+                                            <View>
+                                                <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 16 }}>{u.name}</Text>
+                                                <Text style={{ color: '#AAA', fontSize: 11 }}>A menos de 1km</Text>
+                                            </View>
+                                        </View>
+                                        <Pressable style={{ backgroundColor: '#60A5FA', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }} onPress={() => Alert.alert('Pedido Enviado!', `Pedido de amizade enviado para ${u.name}.`)}>
+                                            <Text style={{ color: '#000', fontWeight: '800', fontSize: 12 }}>Adicionar</Text>
+                                        </Pressable>
+                                    </View>
+                                ))}
+                            </ScrollView>
+                            <Pressable style={{ marginTop: 12, alignItems: 'center', padding: 12 }} onPress={() => { setShowSocialRadar(false); setDiscoveredUsers([]); }}>
+                                <Text style={{ color: '#AAA', fontWeight: '700' }}>Fechar</Text>
+                            </Pressable>
+                        </View>
+                    )}
+                </View>
+            </Modal>
 
             {/* Modal de Confirmação de SOS */}
             <Modal

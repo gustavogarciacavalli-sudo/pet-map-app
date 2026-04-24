@@ -7,7 +7,7 @@ import {
     getEnergyLocal, saveEnergyLocal, getGemsLocal, saveGemsLocal,
     addSpentCoinsLocal, addSpentGemsLocal, getInventoryLocal, addToInventoryLocal
 } from '../../localDatabase';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../components/ThemeContext';
 
 import { CATALOG, RARITY_COLORS, ShopTab, ItemRarity } from '../../constants/catalog';
@@ -24,6 +24,7 @@ function ProductCard({ item, inventory, isDeal, onBuy, onEquip, colors, isDarkMo
     const rarityStyle = RARITY_COLORS[item.rarity as ItemRarity];
     const isGemStore = item.tab === 'gem_store';
     const isConsumable = item.tab === 'consumable';
+    const isHighlighted = item.id === colors.highlightId; // Hack to pass through colors or props
     
     // Contar quantas unidades o usuário já tem (para consumíveis)
     const quantity = inventory.filter((id: string) => id === item.id).length;
@@ -38,8 +39,13 @@ function ProductCard({ item, inventory, isDeal, onBuy, onEquip, colors, isDarkMo
                 styles.card,
                 {
                     backgroundColor: colors.card,
-                    borderColor: colors.border,
+                    borderColor: isHighlighted ? colors.primary : colors.border,
+                    borderWidth: isHighlighted ? 2 : 1,
                     transform: [{ scale }],
+                    shadowColor: isHighlighted ? colors.primary : 'transparent',
+                    shadowOpacity: isHighlighted ? 0.5 : 0,
+                    shadowRadius: 10,
+                    elevation: isHighlighted ? 5 : 0
                 }
             ]}>
                 {/* Rarity indicator line */}
@@ -111,8 +117,10 @@ export default function ShopScreen() {
     const [coins, setCoins] = useState(0);
     const [gems, setGems] = useState(0);
     const [inventory, setInventory] = useState<string[]>([]);
-    const [activeTab, setActiveTab] = useState<ShopTab>('accessory');
+    const { highlight, tab } = useLocalSearchParams();
+    const [activeTab, setActiveTab] = useState<ShopTab>((tab as ShopTab) || 'accessory');
     const [dailyDealId, setDailyDealId] = useState<string | null>(null);
+    const [highlightId, setHighlightId] = useState<string | null>((highlight as string) || null);
 
     const fadeIn = useRef(new Animated.Value(0)).current;
     const slideUp = useRef(new Animated.Value(30)).current;
@@ -120,6 +128,10 @@ export default function ShopScreen() {
     useFocusEffect(
         React.useCallback(() => {
             loadBalances();
+            if (highlight) {
+                setHighlightId(highlight as string);
+                if (tab) setActiveTab(tab as ShopTab);
+            }
             const coinItems = CATALOG.filter(i => i.currency === 'coins' && i.tab !== 'gem_store');
             const randomItem = coinItems[Math.floor(Math.random() * coinItems.length)];
             setDailyDealId(randomItem.id);
@@ -127,7 +139,11 @@ export default function ShopScreen() {
                 Animated.timing(fadeIn, { toValue: 1, duration: 500, easing: Easing.out(Easing.exp), useNativeDriver: true }),
                 Animated.spring(slideUp, { toValue: 0, tension: 80, friction: 12, useNativeDriver: true }),
             ]).start();
-        }, [])
+            
+            // Auto clear highlight after some time
+            const timer = setTimeout(() => setHighlightId(null), 5000);
+            return () => clearTimeout(timer);
+        }, [highlight, tab])
     );
 
     const loadBalances = async () => {
@@ -190,11 +206,14 @@ export default function ShopScreen() {
             const xpResult = await addXPLocal(100);
             const msg = xpResult.leveledUp ? `\n\nSeu explorador subiu para o nível ${xpResult.level}!` : "";
             Alert.alert('Novo Estilo Adquirido!', `${item.name} foi adicionado à sua Mochila e equipado!${msg}`);
-        } else if (item.tab === 'consumable') {
+        } else if (item.tab === 'consumable' || item.tab === 'home') {
             await addToInventoryLocal(item.id, true);
             const newInv = await getInventoryLocal();
             setInventory(newInv);
-            Alert.alert('Compra Concluída!', `${item.name} foi guardado na sua Mochila. Use-o a qualquer momento no mapa.`);
+            const msg = item.tab === 'home' 
+                ? `${item.name} foi guardado no seu Armário. Visite o Lar do seu pet para decorar!`
+                : `${item.name} foi guardado na sua Mochila. Use-o a qualquer momento no mapa.`;
+            Alert.alert('Compra Concluída!', msg);
         }
     };
 
@@ -207,8 +226,9 @@ export default function ShopScreen() {
 
     const shopTabs: { id: ShopTab; label: string; icon: string }[] = [
         { id: 'accessory', label: 'Moda', icon: 'shirt-outline' },
-        { id: 'consumable', label: 'Consumíveis', icon: 'flask-outline' },
-        { id: 'gem_store', label: 'WanderGems', icon: 'diamond-outline' },
+        { id: 'consumable', label: 'Itens', icon: 'flask-outline' },
+        { id: 'home', label: 'Casa', icon: 'home-outline' },
+        { id: 'gem_store', label: 'Gemas', icon: 'diamond-outline' },
     ];
 
     return (
@@ -283,7 +303,7 @@ export default function ShopScreen() {
                             isDeal={item.id === dailyDealId}
                             onBuy={() => handleBuy(item)}
                             onEquip={() => handleEquip(item)}
-                            colors={colors}
+                            colors={{ ...colors, highlightId }}
                             isDarkMode={isDarkMode}
                         />
                     ))}

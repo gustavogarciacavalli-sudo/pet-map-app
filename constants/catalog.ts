@@ -1,4 +1,4 @@
-export type ShopTab = 'accessory' | 'consumable' | 'gem_store';
+export type ShopTab = 'accessory' | 'consumable' | 'home' | 'gem_store';
 export type ItemRarity = 'common' | 'rare' | 'epic' | 'legendary';
 
 export const RARITY_COLORS: Record<ItemRarity, { bg: string; darkBg: string; border: string; glow: string }> = {
@@ -26,10 +26,17 @@ export const CATALOG = [
     { id: 'vr_headset', name: 'Óculos VR Cyber', price: 250, currency: 'gems', icon: 'virtual-reality', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'legendary' as ItemRarity },
     { id: 'magic_wand', name: 'Varinha Estelar', price: 500, currency: 'gems', icon: 'magic-staff', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'legendary' as ItemRarity },
 
+    // Itens de Casinha (Home)
+    { id: 'pet_bed', name: 'Caminha Confortável', price: 1200, currency: 'coins', icon: 'bed-outline', iconLib: 'Ionicons', tab: 'home', category: 'Móveis', rarity: 'common' as ItemRarity, description: 'Um lugar macio para seu pet tirar um cochilo.' },
+    { id: 'pet_bowl', name: 'Tigela de Luxo', price: 800, currency: 'coins', icon: 'bowl-mix', iconLib: 'MaterialCommunityIcons', tab: 'home', category: 'Diversos', rarity: 'common' as ItemRarity, description: 'Comida com estilo e elegância.' },
+    { id: 'lamp', name: 'Luminária Estelar', price: 20, currency: 'gems', icon: 'lamp', iconLib: 'MaterialCommunityIcons', tab: 'home', category: 'Luminárias', rarity: 'rare' as ItemRarity, description: 'Ilumina o lar do seu pet com luz suave.' },
+    { id: 'rug', name: 'Tapete Felpudo', price: 1500, currency: 'coins', icon: 'rug', iconLib: 'MaterialCommunityIcons', tab: 'home', category: 'Tapetes', rarity: 'rare' as ItemRarity, description: 'Traz aconchego instantâneo para o ambiente.' },
+    { id: 'gaming_chair', name: 'Cadeira Gamer Pet', price: 150, currency: 'gems', icon: 'chair-rolling', iconLib: 'MaterialCommunityIcons', tab: 'home', category: 'Móveis', rarity: 'epic' as ItemRarity, description: 'Para os pets que gostam de um setup de alto nível.' },
+
     // Consumíveis (Soft Currency)
     { id: 'apple', name: 'Maçã Fresca', price: 50, currency: 'coins', icon: 'nutrition', iconLib: 'Ionicons', tab: 'consumable', boost: 30, rarity: 'common' as ItemRarity, description: 'Restaura 30% da energia e felicidade.' },
     { id: 'milk', name: 'Leite Morno', price: 30, currency: 'coins', icon: 'cafe', iconLib: 'Ionicons', tab: 'consumable', boost: 20, rarity: 'common' as ItemRarity, description: 'Uma bebida calmante que melhora o humor.' },
-    { id: 'meat', name: 'Bife Suculento', price: 120, currency: 'coins', icon: 'restaurant', iconLib: 'Ionicons', tab: 'consumable', boost: 50, rarity: 'rare' as ItemRarity, description: 'Uma refeição completa para pets esfomeados.' },
+    { id: 'meat', name: 'Bife Suculento', price: 120, currency: 'coins', icon: 'restaurant', iconLib: 'Ionicons', tab: 'consumable', boost: 50, rarity: 'rare' as ItemRarity, description: 'Uma meal completa para pets esfomeados.' },
     { id: 'xp_potion_small', name: 'Poção de XP', price: 300, currency: 'coins', icon: 'flask', iconLib: 'Ionicons', tab: 'consumable', xp: 200, rarity: 'rare' as ItemRarity, description: 'Ganha +200 pontos de experiência instantaneamente.' },
  
     // Consumíveis (Hard Currency)

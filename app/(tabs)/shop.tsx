@@ -19,10 +19,15 @@ function renderItemIcon(item: any, size: number, color: string) {
 }
 
 // ─── Product Card ───
-function ProductCard({ item, isOwned, isDeal, onBuy, onEquip, colors, isDarkMode }: any) {
+function ProductCard({ item, inventory, isDeal, onBuy, onEquip, colors, isDarkMode }: any) {
     const scale = useRef(new Animated.Value(1)).current;
     const rarityStyle = RARITY_COLORS[item.rarity as ItemRarity];
     const isGemStore = item.tab === 'gem_store';
+    const isConsumable = item.tab === 'consumable';
+    
+    // Contar quantas unidades o usuário já tem (para consumíveis)
+    const quantity = inventory.filter((id: string) => id === item.id).length;
+    const isOwned = !isConsumable && quantity > 0;
 
     const onPressIn = () => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, tension: 300, friction: 20 }).start();
     const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 300, friction: 20 }).start();
@@ -43,9 +48,13 @@ function ProductCard({ item, isOwned, isDeal, onBuy, onEquip, colors, isDarkMode
                 {/* Icon */}
                 <View style={[styles.itemIconBg, { backgroundColor: isDarkMode ? rarityStyle.darkBg : rarityStyle.bg }]}>
                     {renderItemIcon(item, 26, rarityStyle.border)}
-                    {isOwned && (
-                        <View style={[styles.ownedBadge, { backgroundColor: colors.primary }]}>
-                            <Ionicons name="checkmark" size={10} color="#FFF" />
+                    {(isOwned || (isConsumable && quantity > 0)) && (
+                        <View style={[styles.ownedBadge, { backgroundColor: isConsumable ? '#FFD700' : colors.primary }]}>
+                            {isConsumable ? (
+                                <Text style={{ color: '#000', fontSize: 10, fontWeight: '900' }}>x{quantity}</Text>
+                            ) : (
+                                <Ionicons name="checkmark" size={10} color="#FFF" />
+                            )}
                         </View>
                     )}
                 </View>
@@ -87,7 +96,7 @@ function ProductCard({ item, isOwned, isDeal, onBuy, onEquip, colors, isDarkMode
                     onPress={isOwned ? onEquip : onBuy}
                 >
                     <Text style={[styles.buyBtnText, { color: isOwned ? colors.text : '#FFF' }]}>
-                        {isOwned ? 'Equipar' : 'Comprar'}
+                        {isOwned ? 'Equipar' : (isConsumable && quantity > 0 ? 'Comprar +' : 'Comprar')}
                     </Text>
                 </Pressable>
             </Animated.View>
@@ -175,15 +184,16 @@ export default function ShopScreen() {
         }
 
         if (item.tab === 'accessory') {
-            await addToInventoryLocal(item.id);
+            await addToInventoryLocal(item.id, false);
             setInventory([...inventory, item.id]);
             await updatePetAccessoryLocal(item.id);
             const xpResult = await addXPLocal(100);
             const msg = xpResult.leveledUp ? `\n\nSeu explorador subiu para o nível ${xpResult.level}!` : "";
             Alert.alert('Novo Estilo Adquirido!', `${item.name} foi adicionado à sua Mochila e equipado!${msg}`);
         } else if (item.tab === 'consumable') {
-            await addToInventoryLocal(item.id);
-            setInventory([...inventory, item.id]);
+            await addToInventoryLocal(item.id, true);
+            const newInv = await getInventoryLocal();
+            setInventory(newInv);
             Alert.alert('Compra Concluída!', `${item.name} foi guardado na sua Mochila. Use-o a qualquer momento no mapa.`);
         }
     };
@@ -269,7 +279,7 @@ export default function ShopScreen() {
                         <ProductCard
                             key={item.id}
                             item={item}
-                            isOwned={inventory.includes(item.id)}
+                            inventory={inventory}
                             isDeal={item.id === dailyDealId}
                             onBuy={() => handleBuy(item)}
                             onEquip={() => handleEquip(item)}

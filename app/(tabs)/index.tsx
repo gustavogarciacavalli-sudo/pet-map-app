@@ -143,11 +143,20 @@ export default function MapScreen() {
 
     // Radar Social
     const [showSocialRadar, setShowSocialRadar] = useState(false);
+    const [showRadarModal, setShowRadarModal] = useState(false);
+    const [showCooldownModal, setShowCooldownModal] = useState(false);
+    const [showItemUsedModal, setShowItemUsedModal] = useState(false);
+    const [usedItemData, setUsedItemData] = useState<any>(null);
+    const [showTreasureModal, setShowTreasureModal] = useState(false);
+    const [treasureAmount, setTreasureAmount] = useState(0);
+    const [treasureType, setTreasureType] = useState<'coins' | 'gems'>('coins');
     const [radarAnim] = useState(new Animated.Value(0));
     const [discoveredUsers, setDiscoveredUsers] = useState<any[]>([]);
 
-    const handleSocialRadarScan = () => {
+    const handleSocialRadarScan = async () => {
         setShowSocialRadar(true);
+        setDiscoveredUsers([]); // Limpa busca anterior
+        
         Animated.loop(
             Animated.sequence([
                 Animated.timing(radarAnim, { toValue: 1, duration: 1500, useNativeDriver: true }),
@@ -155,15 +164,80 @@ export default function MapScreen() {
             ])
         ).start();
 
-        setTimeout(() => {
-            const usersNear = circleMembers.filter(m => calculateDistance(location.latitude, location.longitude, m.lat, m.lon) <= 1000);
-            if (usersNear.length === 0) {
-                usersNear.push({ id: 'mock1', name: 'Lucas P.', lat: location.latitude, lon: location.longitude, online: true });
-                usersNear.push({ id: 'mock2', name: 'Marina Silva', lat: location.latitude, lon: location.longitude, online: true });
+        // Garantir pelo menos 2.5s de animação para o "feeling" de busca
+        const animationPromise = new Promise(resolve => setTimeout(resolve, 2500));
+        
+        try {
+            const user = await getCurrentUserLocal();
+            // Raio de ~1km em graus (aproximado)
+            const latDelta = 0.009;
+            const lonDelta = 0.01;
+
+            const { data: nearData } = await supabase
+                .from('locations')
+                .select('*, profiles(name, wander_id)')
+                .gte('latitude', location.latitude - latDelta)
+                .lte('latitude', location.latitude + latDelta)
+                .gte('longitude', location.longitude - lonDelta)
+                .lte('longitude', location.longitude + lonDelta)
+                .eq('ghost_mode', false)
+                .neq('user_id', user?.id) // Exclui a si mesmo
+                .limit(20);
+
+            let realUsers: any[] = [];
+            if (nearData) {
+                realUsers = nearData.map((l: any) => ({
+                    id: l.user_id,
+                    name: l.profiles?.name || 'Explorador',
+                    lat: l.latitude,
+                    lon: l.longitude,
+                    online: (new Date().getTime() - new Date(l.updated_at).getTime()) < 300000,
+                    isBot: false,
+                    dist: calculateDistance(location.latitude, location.longitude, l.latitude, l.longitude)
+                })).filter(u => u.dist <= 1000);
             }
-            setDiscoveredUsers(usersNear);
+
+            // Gerar BOTS se houver poucos usuários reais
+            const bots: any[] = [];
+            const botNames = ["Felipe M.", "Bruna Lima", "Gustavo G.", "Ana Clara", "Rodrigo S.", "Julia W.", "PetLover99", "Marcos V.", "Tati_Explorer", "Leo_Dog"];
+            
+            // Garantir que sempre existam pelo menos 5 resultados
+            const botsNeeded = Math.max(0, 5 - realUsers.length);
+            for (let i = 0; i < botsNeeded; i++) {
+                const randomName = botNames[Math.floor(Math.random() * botNames.length)];
+                const angle = Math.random() * Math.PI * 2;
+                const d = 150 + Math.random() * 800; // metros
+                
+                // Converter distância (m) para delta graus
+                const dLat = (d / 111320) * Math.cos(angle);
+                const dLon = (d / (111320 * Math.cos(location.latitude * Math.PI / 180))) * Math.sin(angle);
+                
+                bots.push({
+                    id: `bot-${Date.now()}-${i}`,
+                    name: randomName,
+                    lat: location.latitude + dLat,
+                    lon: location.longitude + dLon,
+                    online: true,
+                    isBot: true,
+                    dist: d
+                });
+            }
+
+            const allFound = [...realUsers, ...bots].sort((a, b) => a.dist - b.dist);
+            
+            await animationPromise;
+            setDiscoveredUsers(allFound);
+        } catch (err) {
+            console.error("Erro radar:", err);
+            await animationPromise;
+            setDiscoveredUsers([
+                { id: 'bot-1', name: 'Lucas P.', lat: location.latitude + 0.002, lon: location.longitude - 0.001, online: true, isBot: true, dist: 250 },
+                { id: 'bot-2', name: 'Marina Silva', lat: location.latitude - 0.001, lon: location.longitude + 0.003, online: true, isBot: true, dist: 420 }
+            ]);
+        } finally {
             radarAnim.stopAnimation();
-        }, 3000);
+            radarAnim.setValue(0);
+        }
     };
 
     const setupBattery = async () => {
@@ -591,12 +665,20 @@ export default function MapScreen() {
         const newInv = await getInventoryLocal();
         setInventoryItems(newInv);
         
-        Alert.alert("Item Usado!", `Você consumiu ${itemId} e ganhou um bônus de ${amount} ${type}!`);
+        const itemDef = CATALOG.find(c => c.id === itemId);
+        setUsedItemData({ 
+            name: itemDef?.name || itemId, 
+            type, 
+            amount, 
+            icon: itemDef?.icon,
+            iconLib: (itemDef as any)?.iconLib
+        });
+        setShowItemUsedModal(true);
     };
 
     const handleRadarPress = async () => {
         if (radarTimer > 0) {
-            Alert.alert("Pet Cansado", `O pet ainda está descansando. Volte em ${Math.floor(radarTimer / 60)}m ${radarTimer % 60}s.`);
+            setShowCooldownModal(true);
             return;
         }
 
@@ -620,17 +702,21 @@ export default function MapScreen() {
             // Reduz contagem de partículas na economia
             particleRef.current.burst(W / 2, H - 200, batterySaver ? 'heart' : 'star');
         }
-        Alert.alert("Farejo Ativo!", "Seu pet encontrou rastros de tesouros próximos! Verifique o mapa.");
+        setShowRadarModal(true);
     };
 
     const collectTreasure = async (treasure: any) => {
         if (treasure.type === 'gem') {
             const current = await getGemsLocal();
             await saveGemsLocal(current + 2);
-            Alert.alert("Eba!", "Você encontrou 2 WanderGems!");
+            setTreasureAmount(2);
+            setTreasureType('gems');
+            setShowTreasureModal(true);
         } else {
-            await addCoinsLocal(25);
-            Alert.alert("Tesouro!", "Você abriu um baú com 25 Moedas!");
+            setCoins(await addCoinsLocal(25));
+            setTreasureAmount(25);
+            setTreasureType('coins');
+            setShowTreasureModal(true);
         }
         setTreasures(prev => prev.filter(t => t.id !== treasure.id));
         loadData();
@@ -898,13 +984,6 @@ export default function MapScreen() {
                                 <Text style={styles.mapPillText}>SOS</Text>
                             </Pressable>
 
-                            <Pressable 
-                                style={[styles.mapPill, { backgroundColor: '#1C1C21', borderWidth: 1, borderColor: '#60A5FA', elevation: 8 }]}
-                                onPress={handleSocialRadarScan}
-                            >
-                                <Ionicons name="wifi" size={18} color="#60A5FA" />
-                                <Text style={styles.mapPillText}>Radar</Text>
-                            </Pressable>
                         </ScrollView>
                     </Animated.View>
                 </View>
@@ -924,44 +1003,31 @@ export default function MapScreen() {
                         <View style={styles.categoryTabs}>
                             <Pressable 
                                 style={[styles.categoryTab, { backgroundColor: '#2C2C31' }]} 
-                                onPress={() => router.push({ pathname: '/social', params: { tab: 'amigos' } })}
+                                onPress={handleSocialRadarScan}
                             >
-                                <Ionicons name="people" size={20} color="#AAA" />
-                                {pendingFriendsCount > 0 && (
-                                    <View style={{ 
-                                        position: 'absolute', 
-                                        top: 8, 
-                                        right: 8, 
-                                        width: 8, 
-                                        height: 8, 
-                                        borderRadius: 4, 
-                                        backgroundColor: '#FF4444',
-                                        borderWidth: 1.5,
-                                        borderColor: '#2C2C31'
-                                    }} />
-                                )}
+                                <Ionicons name="wifi" size={20} color="#60A5FA" />
                             </Pressable>
                             <Pressable 
                                 style={[styles.categoryTab, { backgroundColor: '#2C2C31' }]} 
                                 onPress={() => router.push('/pet-home')}
                             >
-                                <Ionicons name="paw" size={20} color="#AAA" />
+                                <Ionicons name="paw" size={20} color="#4CAF50" />
                             </Pressable>
                             <Pressable 
                                 style={[styles.categoryTab, { backgroundColor: showBackpack ? '#A78BFF' : '#2C2C31' }]} 
                                 onPress={handleBackpackPress}
                             >
-                                <Ionicons name="bag-handle-outline" size={20} color={showBackpack ? "#FFF" : "#AAA"} />
+                                <Ionicons name="bag-handle-outline" size={20} color={showBackpack ? "#FFF" : "#FF4444"} />
                             </Pressable>
                             <Pressable 
                                 style={[styles.categoryTab, { backgroundColor: radarTimer > 0 ? '#444' : '#2C2C31' }]} 
                                 onPress={handleRadarPress}
                             >
-                                <Ionicons name="map" size={20} color={radarTimer > 0 ? "#666" : "#AAA"} />
+                                <MaterialCommunityIcons name="treasure-chest" size={22} color={radarTimer > 0 ? "#666" : "#FFD700"} />
                                 {radarTimer > 0 && (
                                     <View style={{ position: 'absolute', bottom: -12 }}>
                                         <Text style={{ fontSize: 9, color: '#AAA', fontWeight: '800' }}>
-                                            {Math.floor(radarTimer / 60)}m
+                                            {radarTimer < 60 ? `${radarTimer}s` : `${Math.floor(radarTimer / 60)}m`}
                                         </Text>
                                     </View>
                                 )}
@@ -1034,21 +1100,20 @@ export default function MapScreen() {
                 visible={showBackpack}
                 transparent={true}
                 animationType="slide"
+                statusBarTranslucent={true}
                 onRequestClose={() => setShowBackpack(false)}
             >
-                <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center' }} onPress={() => setShowBackpack(false)}>
-                    <Pressable style={{ 
-                        margin: 20, 
-                        backgroundColor: '#141419', 
-                        borderRadius: 32, 
-                        padding: 24, 
-                        maxHeight: '70%',
-                        borderWidth: 1,
-                        borderColor: '#333'
-                    }} onPress={() => {}}>
+                <View style={{ flex: 1, backgroundColor: '#141419' }}>
+                    <SafeAreaView style={{ flex: 1 }}>
+                        <View 
+                            style={{ 
+                                flex: 1,
+                                padding: 24, 
+                            }} 
+                        >
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                                <Ionicons name="bag-handle" size={24} color="#A78BFF" />
+                                <Ionicons name="bag-handle" size={24} color="#FF4444" />
                                 <Text style={{ color: '#FFF', fontSize: 22, fontWeight: '900' }}>Sua Mochila</Text>
                             </View>
                             <Pressable 
@@ -1059,48 +1124,95 @@ export default function MapScreen() {
                             </Pressable>
                         </View>
 
-                        <ScrollView>
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                                {inventoryItems.map((id, index) => {
-                                    const itemDef = CATALOG.find(c => c.id === id);
-                                    if (!itemDef) return null;
-                                    
-                                    const isConsumable = itemDef.tab === 'consumable';
-                                    
-                                    return (
-                                        <Pressable 
-                                            key={`${id}-${index}`} 
-                                            style={{ 
-                                                width: '30%', 
-                                                aspectRatio: 1, 
-                                                backgroundColor: '#1C1C21', 
-                                                borderRadius: 16, 
-                                                alignItems: 'center', 
-                                                justifyContent: 'center',
-                                                borderWidth: 1,
-                                                borderColor: isConsumable ? '#A78BFF' : '#333'
-                                            }}
-                                            onPress={() => isConsumable ? handleUseItem(id) : Alert.alert('Aviso', 'Equipe este acessório através do Perfil ou Loja.')}
-                                        >
-                                            <Ionicons 
-                                                name={itemDef.icon as any} 
-                                                size={32} color={isConsumable ? '#A78BFF' : '#AAA'} 
-                                            />
-                                            <Text style={{ color: '#AAA', fontSize: 10, marginTop: 4, textAlign: 'center' }} numberOfLines={1}>{itemDef.name}</Text>
-                                        </Pressable>
-                                    );
-                                })}
-                                {inventoryItems.length === 0 && (
-                                    <Text style={{ color: '#666', textAlign: 'center', width: '100%', padding: 40 }}>Sua mochila está vazia...</Text>
+                        <ScrollView 
+                            showsVerticalScrollIndicator={false}
+                            nestedScrollEnabled={true}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <View style={{ gap: 2 }}>
+                                {Object.entries(inventoryItems.reduce((acc, id) => {
+                                    acc[id] = (acc[id] || 0) + 1;
+                                    return acc;
+                                }, {} as Record<string, number>))
+                                    .filter(([id]) => CATALOG.find(c => c.id === id)?.tab === 'consumable')
+                                    .map(([id, quantity]: [string, any], index) => {
+                                        const itemDef = CATALOG.find(c => (c as any).id === id);
+                                        if (!itemDef) return null;
+                                        
+                                        return (
+                                            <View 
+                                                key={`${id}-${index}`} 
+                                                style={{ 
+                                                    width: '100%', 
+                                                    flexDirection: 'row',
+                                                    backgroundColor: '#1C1C21', 
+                                                    borderRadius: 20, 
+                                                    padding: 16,
+                                                    alignItems: 'center',
+                                                    borderWidth: 1,
+                                                    borderColor: '#333',
+                                                    marginBottom: 12
+                                                }}
+                                            >
+                                                {/* Icone à Esquerda */}
+                                                <View style={{ 
+                                                    width: 52, 
+                                                    height: 52, 
+                                                    borderRadius: 14, 
+                                                    backgroundColor: '#2C2C31', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'center',
+                                                    borderWidth: 1,
+                                                    borderColor: '#444'
+                                                }}>
+                                                    <Ionicons name={(itemDef as any).icon} size={28} color="#A78BFF" />
+                                                    {quantity > 1 && (
+                                                        <View style={{ position: 'absolute', top: -8, right: -8, backgroundColor: '#FFD700', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: '#000' }}>
+                                                            <Text style={{ color: '#000', fontSize: 10, fontWeight: '900' }}>x{quantity}</Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                                
+                                                {/* Nome e Descrição Centralizados */}
+                                                <View style={{ flex: 1, marginLeft: 16 }}>
+                                                    <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '900' }}>{itemDef.name}</Text>
+                                                    <Text style={{ color: '#AAA', fontSize: 12, marginTop: 2, lineHeight: 16 }}>{(itemDef as any).description}</Text>
+                                                </View>
+
+                                                {/* Botão de Ação à Direita */}
+                                                <Pressable 
+                                                    style={({ pressed }) => ({ 
+                                                        backgroundColor: pressed ? '#8B5CF6' : '#A78BFF', 
+                                                        paddingHorizontal: 16, 
+                                                        paddingVertical: 10, 
+                                                        borderRadius: 14,
+                                                        marginLeft: 8,
+                                                        elevation: 4,
+                                                        shadowColor: '#A78BFF',
+                                                        shadowOffset: { width: 0, height: 4 },
+                                                        shadowOpacity: 0.3,
+                                                        shadowRadius: 8
+                                                    })}
+                                                    onPress={() => handleUseItem(id)}
+                                                >
+                                                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 13 }}>Utilizar</Text>
+                                                </Pressable>
+                                            </View>
+                                        );
+                                    })
+                                }
+                                {inventoryItems.filter(id => CATALOG.find(c => c.id === id)?.tab === 'consumable').length === 0 && (
+                                    <Text style={{ color: '#666', textAlign: 'center', width: '100%', padding: 40 }}>Sua mochila não possui itens consumíveis...</Text>
                                 )}
                             </View>
                         </ScrollView>
                         
                         <Text style={{ color: '#555', fontSize: 11, textAlign: 'center', marginTop: 20 }}>
-                            Toque num item consumível para usar • Toque fora para fechar
+                            Toque num item consumível para usar • Deslize para baixo ou use o X para fechar
                         </Text>
-                    </Pressable>
-                </Pressable>
+                    </View>
+                </SafeAreaView>
+            </View>
             </Modal>
             
             <Modal
@@ -1243,7 +1355,9 @@ export default function MapScreen() {
                                             </View>
                                             <View>
                                                 <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 16 }}>{u.name}</Text>
-                                                <Text style={{ color: '#AAA', fontSize: 11 }}>A menos de 1km</Text>
+                                                <Text style={{ color: '#AAA', fontSize: 11 }}>
+                                                    {u.dist < 100 ? 'Muito perto de você' : `A ${Math.round(u.dist)}m de distância`}
+                                                </Text>
                                             </View>
                                         </View>
                                         <Pressable style={{ backgroundColor: '#60A5FA', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }} onPress={() => Alert.alert('Pedido Enviado!', `Pedido de amizade enviado para ${u.name}.`)}>
@@ -1327,6 +1441,238 @@ export default function MapScreen() {
                 points={mergePoints.length > 0 ? mergePoints : [{ x: SCREEN_WIDTH/2, y: SCREEN_HEIGHT/2 }, { x: SCREEN_WIDTH/2 + 20, y: SCREEN_HEIGHT/2 + 20 }]}
                 color={colors.primary}
             />
+
+            {/* Modal de Sucesso do Farejo */}
+            <Modal
+                visible={showRadarModal}
+                transparent={true}
+                animationType="fade"
+                statusBarTranslucent={true}
+                onRequestClose={() => setShowRadarModal(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ 
+                        width: '85%', 
+                        backgroundColor: '#1C1C21', 
+                        borderRadius: 32, 
+                        padding: 32, 
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: '#FFD70033',
+                        shadowColor: '#FFD700',
+                        shadowOffset: { width: 0, height: 10 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 20,
+                        elevation: 10
+                    }}>
+                        <View style={{ 
+                            width: 100, 
+                            height: 100, 
+                            borderRadius: 50, 
+                            backgroundColor: '#FFD70015', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            marginBottom: 24
+                        }}>
+                            <MaterialCommunityIcons name="treasure-chest" size={56} color="#FFD700" />
+                        </View>
+                        
+                        <Text style={{ fontSize: 26, fontWeight: '900', color: '#FFF', marginBottom: 12, textAlign: 'center' }}>Farejo Ativo!</Text>
+                        <Text style={{ fontSize: 16, color: '#AAA', textAlign: 'center', marginBottom: 32, lineHeight: 24 }}>
+                            Seu pet farejou rastros de tesouros! Verifique os ícones de baú que apareceram no seu mapa.
+                        </Text>
+
+                        <Pressable 
+                            style={{ 
+                                width: '100%', 
+                                backgroundColor: '#FFD700', 
+                                paddingVertical: 18, 
+                                borderRadius: 20, 
+                                alignItems: 'center',
+                                shadowColor: '#FFD700',
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.4,
+                                shadowRadius: 8
+                            }}
+                            onPress={() => setShowRadarModal(false)}
+                        >
+                            <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>VAMOS BUSCAR!</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal de Cooldown do Farejo */}
+            <Modal
+                visible={showCooldownModal}
+                transparent={true}
+                animationType="fade"
+                statusBarTranslucent={true}
+                onRequestClose={() => setShowCooldownModal(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ 
+                        width: '85%', 
+                        backgroundColor: '#1C1C21', 
+                        borderRadius: 32, 
+                        padding: 32, 
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: '#66666633'
+                    }}>
+                        <View style={{ 
+                            width: 100, 
+                            height: 100, 
+                            borderRadius: 50, 
+                            backgroundColor: '#66666620', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            marginBottom: 24
+                        }}>
+                            <Ionicons name="bed-outline" size={56} color="#8E8E9A" />
+                        </View>
+                        
+                        <Text style={{ fontSize: 26, fontWeight: '900', color: '#FFF', marginBottom: 12, textAlign: 'center' }}>Pet Cansado</Text>
+                        <Text style={{ fontSize: 16, color: '#AAA', textAlign: 'center', marginBottom: 32, lineHeight: 24 }}>
+                            O pet ainda está descansando do último farejo. Volte em {radarTimer < 60 ? `${radarTimer}s` : `${Math.floor(radarTimer / 60)}m ${radarTimer % 60}s`}.
+                        </Text>
+
+                        <Pressable 
+                            style={{ 
+                                width: '100%', 
+                                backgroundColor: '#2C2C31', 
+                                paddingVertical: 18, 
+                                borderRadius: 20, 
+                                alignItems: 'center',
+                                borderWidth: 1,
+                                borderColor: '#444'
+                            }}
+                            onPress={() => setShowCooldownModal(false)}
+                        >
+                            <Text style={{ color: '#AAA', fontWeight: '900', fontSize: 16 }}>ENTENDIDO</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal de Feedback de Uso de Item */}
+            <Modal
+                visible={showItemUsedModal}
+                transparent={true}
+                animationType="fade"
+                statusBarTranslucent={true}
+                onRequestClose={() => setShowItemUsedModal(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ 
+                        width: '80%', 
+                        backgroundColor: '#1C1C21', 
+                        borderRadius: 32, 
+                        padding: 32, 
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: '#A78BFF33'
+                    }}>
+                        <View style={{ 
+                            width: 80, 
+                            height: 80, 
+                            borderRadius: 40, 
+                            backgroundColor: '#A78BFF15', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            marginBottom: 20
+                        }}>
+                            {usedItemData?.iconLib === 'MaterialCommunityIcons' ? (
+                                <MaterialCommunityIcons name={usedItemData?.icon} size={40} color="#A78BFF" />
+                            ) : (
+                                <Ionicons name={usedItemData?.icon || 'sparkles'} size={40} color="#A78BFF" />
+                            )}
+                        </View>
+                        
+                        <Text style={{ fontSize: 22, fontWeight: '900', color: '#FFF', marginBottom: 8, textAlign: 'center' }}>Item Usado!</Text>
+                        <Text style={{ fontSize: 15, color: '#AAA', textAlign: 'center', marginBottom: 24, lineHeight: 22 }}>
+                            Você consumiu <Text style={{ color: '#FFF', fontWeight: '700' }}>{usedItemData?.name}</Text> e ganhou um bônus de <Text style={{ color: '#A78BFF', fontWeight: '800' }}>{usedItemData?.amount} {usedItemData?.type}</Text>!
+                        </Text>
+
+                        <Pressable 
+                            style={{ 
+                                width: '100%', 
+                                backgroundColor: '#A78BFF', 
+                                paddingVertical: 14, 
+                                borderRadius: 16, 
+                                alignItems: 'center'
+                            }}
+                            onPress={() => setShowItemUsedModal(false)}
+                        >
+                            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>EXCELENTE!</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal de Tesouro Encontrado */}
+            <Modal
+                visible={showTreasureModal}
+                transparent={true}
+                animationType="fade"
+                statusBarTranslucent={true}
+                onRequestClose={() => setShowTreasureModal(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ 
+                        width: '80%', 
+                        backgroundColor: '#1C1C21', 
+                        borderRadius: 32, 
+                        padding: 32, 
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: '#FFD70033'
+                    }}>
+                        <View style={{ 
+                            width: 90, 
+                            height: 90, 
+                            borderRadius: 45, 
+                            backgroundColor: treasureType === 'gems' ? '#60A5FA15' : '#FFD70015', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            marginBottom: 24,
+                            borderWidth: 1,
+                            borderColor: treasureType === 'gems' ? '#60A5FA44' : '#FFD70044'
+                        }}>
+                            <MaterialCommunityIcons 
+                                name={treasureType === 'gems' ? "diamond-stone" : "treasure-chest"} 
+                                size={48} 
+                                color={treasureType === 'gems' ? "#60A5FA" : "#FFD700"} 
+                            />
+                        </View>
+                        
+                        <Text style={{ fontSize: 24, fontWeight: '900', color: '#FFF', marginBottom: 8, textAlign: 'center' }}>
+                            {treasureType === 'gems' ? 'GEMAS ENCONTRADAS!' : 'BAÚ ENCONTRADO!'}
+                        </Text>
+                        <Text style={{ fontSize: 16, color: '#AAA', textAlign: 'center', marginBottom: 28, lineHeight: 24 }}>
+                            Parabéns! Você descobriu um tesouro perdido e ganhou <Text style={{ color: treasureType === 'gems' ? '#60A5FA' : '#FFD700', fontWeight: '900' }}>{treasureAmount} {treasureType === 'gems' ? 'WanderGems' : 'Moedas'}</Text>!
+                        </Text>
+
+                        <Pressable 
+                            style={{ 
+                                width: '100%', 
+                                backgroundColor: treasureType === 'gems' ? '#60A5FA' : '#FFD700', 
+                                paddingVertical: 16, 
+                                borderRadius: 16, 
+                                alignItems: 'center',
+                                elevation: 8,
+                                shadowColor: treasureType === 'gems' ? '#60A5FA' : '#FFD700',
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.4,
+                                shadowRadius: 10
+                            }}
+                            onPress={() => setShowTreasureModal(false)}
+                        >
+                            <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>COLETAR</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }

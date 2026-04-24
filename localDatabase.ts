@@ -110,9 +110,9 @@ export const getInventoryLocal = async (): Promise<string[]> => {
     const inv = await AsyncStorage.getItem(INVENTORY_KEY);
     return inv ? JSON.parse(inv) : [];
 };
-export const addToInventoryLocal = async (itemId: string): Promise<void> => {
+export const addToInventoryLocal = async (itemId: string, allowMultiple: boolean = false): Promise<void> => {
     const inv = await getInventoryLocal();
-    if (!inv.includes(itemId)) {
+    if (allowMultiple || !inv.includes(itemId)) {
         inv.push(itemId);
         await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inv));
     }

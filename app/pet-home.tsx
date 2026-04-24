@@ -29,6 +29,7 @@ import {
     addHappinessLocal
 } from '../localDatabase';
 import { LinearGradient } from 'expo-linear-gradient';
+import { CATALOG } from '../constants/catalog';
 
 const { width, height } = Dimensions.get('window');
 
@@ -188,22 +189,31 @@ export default function PetHomeScreen() {
         <View style={styles.wardrobeContainer}>
             <Text style={styles.sectionTitle}>Guarda-Roupa</Text>
             <ScrollView contentContainerStyle={styles.inventoryGrid}>
-                {['none', ...inventory].map((item, index) => (
-                    <Pressable 
-                        key={index} 
-                        style={[
-                            styles.inventoryItem, 
-                            pet?.accessory === item && { borderColor: '#A78BFF', borderWidth: 2 }
-                        ]}
-                        onPress={() => handleUpdateAccessory(item)}
-                    >
-                        {item === 'none' ? (
-                            <Ionicons name="close-circle" size={32} color="#666" />
-                        ) : (
-                            <Text style={{ fontSize: 32 }}>{item}</Text>
-                        )}
-                    </Pressable>
-                ))}
+                {['none', ...inventory.filter(id => CATALOG.find(c => c.id === id)?.tab === 'accessory')].map((item, index) => {
+                    const itemDef = CATALOG.find(c => c.id === item);
+                    return (
+                        <Pressable 
+                            key={index} 
+                            style={[
+                                styles.inventoryItem, 
+                                pet?.accessory === item && { borderColor: '#A78BFF', borderWidth: 2 }
+                            ]}
+                            onPress={() => handleUpdateAccessory(item)}
+                        >
+                            {item === 'none' ? (
+                                <>
+                                    <Ionicons name="close-circle" size={32} color="#666" />
+                                    <Text style={{ color: '#888', fontSize: 10, marginTop: 4 }}>Remover</Text>
+                                </>
+                            ) : (
+                                <>
+                                    <Ionicons name={itemDef?.icon as any} size={32} color="#A78BFF" />
+                                    <Text style={{ color: '#AAA', fontSize: 10, marginTop: 4, textAlign: 'center' }} numberOfLines={1}>{itemDef?.name}</Text>
+                                </>
+                            )}
+                        </Pressable>
+                    );
+                })}
                 {inventory.length === 0 && (
                     <View style={styles.emptyInventory}>
                         <Text style={{ color: '#888', textAlign: 'center' }}>Você ainda não tem acessórios. Visite a Loja!</Text>

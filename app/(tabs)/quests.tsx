@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5, MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { getCoinsLocal, saveCoinsLocal, addXPLocal, getLevelDataLocal, getTotalDistanceLocal, getClaimedQuestsLocal, claimQuestLocal, getWeeklyActivityLocal, getPetLocal, getSpentCoinsLocal, getCurrentUserLocal } from '../../localDatabase';
 import { AuthService } from '../../services/AuthService';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useTheme } from '../../components/ThemeContext';
 import { MAIN_QUESTS, DAILY_QUESTS, WEEKLY_QUESTS, MONTHLY_QUESTS, QuestDef, QuestType } from '../../data/questsData';
 
@@ -160,6 +160,7 @@ function QuestCard({ quest, progress, isClaimed, isCompleted, onClaim, colors, i
 // ─── Main Screen ───
 export default function QuestsScreen() {
     const { colors, isDarkMode } = useTheme();
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState<QuestType>('main');
 
     const [stats, setStats] = useState({
@@ -288,9 +289,17 @@ export default function QuestsScreen() {
             <Animated.View style={{ opacity: fadeIn, transform: [{ translateY: slideUp }] }}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <View>
-                        <Text style={[styles.title, { color: colors.text }]}>Missões</Text>
-                        <Text style={[styles.subtitle, { color: colors.subtext }]}>Cumpra desafios e ganhe recompensas</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <Pressable 
+                            onPress={() => router.back()} 
+                            style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            <Ionicons name="arrow-back" size={20} color={colors.text} />
+                        </Pressable>
+                        <View>
+                            <Text style={[styles.title, { color: colors.text }]}>Missões</Text>
+                            <Text style={[styles.subtitle, { color: colors.subtext }]}>Cumpra desafios e ganhe recompensas</Text>
+                        </View>
                     </View>
                     <View style={[styles.coinBadge, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '30' }]}>
                         <Ionicons name="wallet" size={14} color={colors.primary} />

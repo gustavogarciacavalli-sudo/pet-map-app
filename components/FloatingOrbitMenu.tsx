@@ -17,7 +17,7 @@ const MENU_ITEMS = [
   { id: 'index', icon: 'map-outline', lib: 'Ionicons', route: '/(tabs)', label: 'Mapa' },
   { id: 'quests', icon: 'scroll', lib: 'FontAwesome5', route: '/(tabs)/quests', label: 'Missões' },
   { id: 'shop', icon: 'storefront-outline', lib: 'MaterialCommunityIcons', route: '/(tabs)/shop', label: 'Loja' },
-  { id: 'friends', icon: 'people-outline', lib: 'Ionicons', route: '/(tabs)/friends', label: 'Amigos' },
+  { id: 'friends', icon: 'people-outline', lib: 'Ionicons', route: '/(tabs)/friends', label: 'Amigos/Clã' },
   { id: 'profile', icon: 'person-outline', lib: 'Ionicons', route: '/(tabs)/profile', label: 'Perfil' },
 ];
 
@@ -43,16 +43,16 @@ export function FloatingOrbitMenu() {
     setIsOpen(!isOpen);
 
     // Anima o botão principal (rotação)
-    mainAnim.value = withSpring(nextValue, { damping: 12, stiffness: 100 });
+    mainAnim.value = withSpring(nextValue, { damping: 14, stiffness: 120, mass: 0.8 });
 
     // Anima cada item com um atraso (stagger)
     itemAnims.forEach((anim, index) => {
       anim.value = withDelay(
         isOpen ? (itemAnims.length - index) * 30 : index * 40,
         withSpring(nextValue, {
-          damping: 10,
-          stiffness: 120,
-          mass: 0.6
+          damping: 12,
+          stiffness: 150,
+          mass: 0.7
         })
       );
     });
@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
   },
   orbitContainer: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 40 : 44,
+    bottom: Platform.OS === 'ios' ? 75 : 44,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',

@@ -82,6 +82,23 @@ Para manter a sanidade do projeto, seguimos estas regras:
 
 ---
 
+## 🛠️ Log de Atualizações (Recent Updates)
+
+### [24/04/2026] - Refinamento de UX & Navegação Premium
+- **Navegação Fluida**: Adição de botões "Voltar" (`arrow-back`) em todas as telas secundárias (**Loja**, **Missões**, **Social**), eliminando becos sem saída na navegação.
+- **Mochila 2.0**:
+    - Novo ícone de acesso (`bag-handle-outline`) no HUD.
+    - Modal revitalizado com header informativo e botão de fechar dedicado.
+    - Implementação de *Dismiss on Backdrop Tap* (fechar ao tocar fora).
+- **Acessibilidade Mobile**:
+    - Ajuste de área de toque (`SHEET_MIN`) no Bottom Sheet para compatibilidade total com gestos de iPhone.
+    - Implementação de Scroll Horizontal nos botões de ação do mapa para evitar cortes de interface em telas pequenas.
+- **Estabilidade Visual**:
+    - Correção de mapeamento de ícones (Ionicons/MaterialCommunityIcons).
+    - Otimização de cache do Expo para carregamento instantâneo de assets.
+
+---
+
 ## 📋 Lista de Tarefas (Roadmap de Verificação)
 
 - [ ] Verificar se foto de perfil continua no banco de dados

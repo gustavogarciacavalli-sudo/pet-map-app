@@ -12,7 +12,8 @@ import {
     LayoutAnimation,
     Platform,
     UIManager,
-    Modal
+    Modal,
+    TextInput
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -29,7 +30,8 @@ import {
     LocalPet,
     getCoinsLocal,
     getHappinessLocal,
-    addHappinessLocal
+    addHappinessLocal,
+    updatePetLocal
 } from '../localDatabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CATALOG } from '../constants/catalog';
@@ -42,6 +44,8 @@ if (Platform.OS === 'android') {
 
 const { width, height } = Dimensions.get('window');
 const FURNITURE_CATEGORIES = ['Todos', 'Móveis', 'Luminárias', 'Tapetes', 'Diversos'];
+const ACCESSORY_CATEGORIES = ['Todos', 'Óculos', 'Chapéu', 'Superior', 'Inferior', 'Tênis'];
+const SPECIES_LIST: any[] = ['bunny', 'puppy', 'cat', 'sheep', 'mouse', 'snake', 'fox', 'parrot', 'frog', 'cockroach', 'wolf', 'raccoon', 'bear'];
 
 export default function PetHomeScreen() {
     const { colors, isDarkMode } = useTheme();
@@ -58,13 +62,16 @@ export default function PetHomeScreen() {
     const [placedItems, setPlacedItems] = useState<string[]>([]);
     const [selectedCategory, setSelectedCategory] = useState('Todos');
     
-    // Purchase Modal States
+    // Modals
     const [showPurchaseModal, setShowPurchaseModal] = useState(false);
     const [selectedLockedItem, setSelectedLockedItem] = useState<any>(null);
+    const [showNameModal, setShowNameModal] = useState(false);
+    const [tempName, setTempName] = useState('');
 
     const bounceAnim = useRef(new Animated.Value(0)).current;
     const heartAnim = useRef(new Animated.Value(0)).current;
     const decorateAnim = useRef(new Animated.Value(0)).current;
+    const footerAnim = useRef(new Animated.Value(0)).current;
 
     const loadData = async () => {
         const localPet = await getPetLocal();
@@ -100,6 +107,13 @@ export default function PetHomeScreen() {
             friction: 8,
             tension: 40
         }).start();
+
+        Animated.spring(footerAnim, {
+            toValue: showFurnitureDrawer ? 1 : 0,
+            useNativeDriver: true,
+            friction: 8,
+            tension: 40
+        }).start();
     }, [showFurnitureDrawer]);
 
     const handleUpdateAccessory = async (acc: string) => {
@@ -107,6 +121,21 @@ export default function PetHomeScreen() {
         const updatedPet = await getPetLocal();
         setPet(updatedPet);
         Alert.alert("Sucesso", "Visual atualizado!");
+    };
+
+    const handleUpdateName = () => {
+        setTempName(pet?.name || '');
+        setShowNameModal(true);
+    };
+
+    const confirmNameUpdate = async () => {
+        if (tempName.trim().length > 0) {
+            const updated = await updatePetLocal({ name: tempName.trim() });
+            setPet(updated);
+            setShowNameModal(false);
+        } else {
+            Alert.alert("Erro", "O nome não pode estar vazio.");
+        }
     };
 
     const handlePetting = async () => {
@@ -119,8 +148,25 @@ export default function PetHomeScreen() {
         ]).start();
     };
 
+    const handleNextSpecies = async () => {
+        const currentIdx = SPECIES_LIST.indexOf(pet?.species || 'bunny');
+        const nextIdx = (currentIdx + 1) % SPECIES_LIST.length;
+        const updated = await updatePetLocal({ species: SPECIES_LIST[nextIdx] });
+        setPet(updated);
+    };
+
+    const handlePrevSpecies = async () => {
+        const currentIdx = SPECIES_LIST.indexOf(pet?.species || 'bunny');
+        const nextIdx = (currentIdx - 1 + SPECIES_LIST.length) % SPECIES_LIST.length;
+        const updated = await updatePetLocal({ species: SPECIES_LIST[nextIdx] });
+        setPet(updated);
+    };
+
     const toggleDrawer = () => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        if (!showFurnitureDrawer) {
+            setSelectedCategory('Todos');
+        }
         setShowFurnitureDrawer(!showFurnitureDrawer);
     };
 
@@ -137,7 +183,7 @@ export default function PetHomeScreen() {
                     <Ionicons name="chevron-back" size={20} color="#FFF" />
                 </Pressable>
                 
-                {showFurnitureDrawer && (
+                {showFurnitureDrawer && (activeTab === 'home' || activeTab === 'pet') && (
                     <Animated.View style={[styles.headerCategories, { opacity: decorateAnim }]}>
                         <LinearGradient 
                             colors={['#141419', 'transparent']} 
@@ -150,7 +196,7 @@ export default function PetHomeScreen() {
                             showsHorizontalScrollIndicator={false} 
                             contentContainerStyle={{ paddingLeft: 10, paddingRight: 30 }}
                         >
-                            {FURNITURE_CATEGORIES.map(cat => (
+                            {(activeTab === 'home' ? FURNITURE_CATEGORIES : ACCESSORY_CATEGORIES).map(cat => (
                                 <Pressable 
                                     key={cat} 
                                     onPress={() => setSelectedCategory(cat)}
@@ -169,14 +215,21 @@ export default function PetHomeScreen() {
                     </Animated.View>
                 )}
 
-                {activeTab === 'home' && (
-                    <Animated.View style={{ transform: [{ translateX }], zIndex: 20 }}>
+                {/* Home/Pet action buttons */}
+                {(activeTab === 'home' || activeTab === 'pet') && (
+                    <Animated.View style={{ transform: [{ translateX }], zIndex: 20, flexDirection: 'row', alignItems: 'center' }}>
                         <Pressable 
                             style={[styles.decorateBtnHeader, showFurnitureDrawer && styles.decorateBtnActive]}
                             onPress={toggleDrawer}
                         >
-                            <Ionicons name={showFurnitureDrawer ? "close" : "construct"} size={14} color="#FFF" />
-                            <Text style={styles.decorateBtnText}>{showFurnitureDrawer ? "Sair" : "Decorar"}</Text>
+                            <Ionicons 
+                                name={showFurnitureDrawer ? "close" : (activeTab === 'home' ? "construct" : "shirt")} 
+                                size={14} 
+                                color="#FFF" 
+                            />
+                            <Text style={styles.decorateBtnText}>
+                                {showFurnitureDrawer ? "Sair" : (activeTab === 'home' ? "Decorar" : "Personalizar")}
+                            </Text>
                         </Pressable>
                     </Animated.View>
                 )}
@@ -294,63 +347,126 @@ export default function PetHomeScreen() {
 
     const renderPetTab = () => (
         <View style={styles.petTabContainer}>
-            <View style={styles.petStatsHeader}>
-                <View style={styles.petMainInfo}>
-                    <Text style={styles.petNameLarge}>{pet?.name || 'Explorador'}</Text>
-                    <View style={styles.levelBadge}>
-                        <Text style={styles.levelBadgeText}>Lvl {stats.level}</Text>
-                    </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
+                {/* Pet Preview as Centerpiece */}
+                <View style={styles.petPreviewCenter}>
+                    <Animated.View style={{ transform: [{ translateY: bounceAnim }] }}>
+                        <PetPreview species={pet?.species || 'bunny'} size={width * 0.8} />
+                    </Animated.View>
+                    <View style={styles.petShadowLarge} />
                 </View>
-                <View style={styles.statsGrid}>
-                    <View style={styles.statCard}>
-                        <Ionicons name="heart" size={20} color="#FF4444" />
-                        <Text style={stats.levelBadgeText}>{happiness}%</Text>
-                        <Text style={styles.statLabel}>Felicidade</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                        <MaterialCommunityIcons name="lightning-bolt" size={22} color="#FFD700" />
-                        <Text style={styles.statVal}>{energy}%</Text>
-                        <Text style={styles.statLabel}>Energia</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                        <Ionicons name="wallet" size={20} color="#A78BFF" />
-                        <Text style={styles.statVal}>{coins}</Text>
-                        <Text style={styles.statLabel}>Moedas</Text>
-                    </View>
-                </View>
-                <View style={styles.xpProgressContainer}>
-                    <View style={styles.xpLabelRow}>
-                        <Text style={styles.xpLabel}>Experiência</Text>
-                        <Text style={styles.xpValue}>{stats.xp} / {stats.level * 200}</Text>
-                    </View>
-                    <View style={styles.xpBarBackground}>
-                        <View style={[styles.xpBarFill, { width: `${Math.min((stats.xp / (stats.level * 200)) * 100, 100)}%` }]} />
-                    </View>
-                </View>
-            </View>
-            <Text style={styles.sectionTitlePet}>Personalizar Visual</Text>
-            <ScrollView contentContainerStyle={styles.inventoryGridPet}>
-                {['none', ...inventory.filter(id => CATALOG.find(c => c.id === id)?.tab === 'accessory')].map((item, index) => {
-                    const itemDef = CATALOG.find(c => c.id === item);
-                    return (
-                        <Pressable 
-                            key={index} 
-                            style={[
-                                styles.inventoryItem, 
-                                pet?.accessory === item && { borderColor: '#A78BFF', borderWidth: 2 }
-                            ]}
-                            onPress={() => handleUpdateAccessory(item)}
-                        >
-                            {item === 'none' ? (
-                                <Ionicons name="close-circle" size={32} color="#666" />
-                            ) : (
-                                <Ionicons name={itemDef?.icon as any} size={32} color="#A78BFF" />
-                            )}
-                            <Text style={styles.itemLabelPet}>{item === 'none' ? 'Nenhum' : itemDef?.name}</Text>
-                        </Pressable>
-                    );
-                })}
             </ScrollView>
+
+            {/* Accessory Drawer (Fixed Bottom) */}
+            {activeTab === 'pet' && (
+                <Animated.View style={[
+                    styles.furnitureDrawer,
+                    {
+                        transform: [{
+                            translateY: footerAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [300, 0] // Sobe o drawer quando o menu abre
+                            })
+                        }]
+                    }
+                ]}>
+                    <Text style={styles.drawerTitleSmall}>{selectedCategory.toUpperCase()}</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
+                        {['none', ...inventory.filter(id => {
+                            const item = CATALOG.find(c => c.id === id);
+                            if (item?.tab !== 'accessory') return false;
+                            return selectedCategory === 'Todos' || item.category === selectedCategory;
+                        })].map((item, index) => {
+                            const itemDef = CATALOG.find(c => c.id === item);
+                            const isEquipped = pet?.accessory === item;
+                            
+                            return (
+                                <Pressable 
+                                    key={index} 
+                                    style={styles.furnitureItemLarge}
+                                    onPress={() => handleUpdateAccessory(item)}
+                                >
+                                    <View style={[
+                                        styles.accessoryIconBox,
+                                        isEquipped && { borderColor: '#A78BFF', borderWidth: 2, backgroundColor: 'rgba(167, 139, 255, 0.1)' }
+                                    ]}>
+                                        {item === 'none' ? (
+                                            <Ionicons name="close-outline" size={32} color="#666" />
+                                        ) : (
+                                            <Ionicons name={itemDef?.icon as any} size={32} color="#A78BFF" />
+                                        )}
+                                    </View>
+                                    <Text style={[styles.furnitureLabel, isEquipped && { color: '#FFF' }]}>
+                                        {item === 'none' ? 'Limpar' : itemDef?.name}
+                                    </Text>
+                                </Pressable>
+                            );
+                        })}
+                    </ScrollView>
+                </Animated.View>
+            )}
+
+            {/* Floating Stats Footer */}
+            <Animated.View style={[
+                styles.petStatsFooter,
+                activeTab === 'pet' && {
+                    transform: [{
+                        translateY: footerAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, 250] // Desce o footer quando o menu abre
+                        })
+                    }]
+                }
+            ]}>
+                {/* Species Selector Pill (Floating just above the rest of stats) */}
+                <View style={styles.speciesPillWrapper}>
+                    <View style={styles.speciesPill}>
+                        <Pressable onPress={handlePrevSpecies} style={styles.speciesPillArrow}>
+                            <Ionicons name="chevron-back" size={20} color="#FFF" />
+                        </Pressable>
+                        <View style={styles.speciesLabelContainer}>
+                            <Text style={styles.speciesLabelText}>
+                                {(pet?.species || 'bunny').toUpperCase()}
+                            </Text>
+                        </View>
+                        <Pressable onPress={handleNextSpecies} style={styles.speciesPillArrow}>
+                            <Ionicons name="chevron-forward" size={20} color="#FFF" />
+                        </Pressable>
+                    </View>
+                </View>
+
+                <View style={styles.petMainInfoRow}>
+                    <Pressable onPress={handleUpdateName} style={styles.nameContainerFooter}>
+                        <Text style={[styles.petNameFooter, !pet?.name && { color: '#666', fontStyle: 'italic' }]}>
+                            {pet?.name || 'Nomeie seu pet'}
+                        </Text>
+                        <Ionicons name="pencil" size={14} color="#A78BFF" style={{ marginLeft: 8 }} />
+                    </Pressable>
+                    
+                    <View style={styles.xpProgressFooter}>
+                        <View>
+                            <Text style={styles.xpLabelFooter}>XP: {stats.xp} / {stats.level * 200}</Text>
+                        </View>
+                        <View style={styles.xpBarBackgroundFooter}>
+                            <View style={[styles.xpBarFillFooter, { width: `${Math.min((stats.xp / (stats.level * 200)) * 100, 100)}%` }]} />
+                        </View>
+                    </View>
+                </View>
+
+                <View style={styles.statsGridFooter}>
+                    <View style={styles.statCardFooter}>
+                        <Ionicons name="heart" size={16} color="#FF4444" />
+                        <Text style={styles.statValFooter}>{happiness}%</Text>
+                    </View>
+                    <View style={styles.statCardFooter}>
+                        <MaterialCommunityIcons name="lightning-bolt" size={18} color="#FFD700" />
+                        <Text style={styles.statValFooter}>{energy}%</Text>
+                    </View>
+                    <View style={styles.levelBadgeFooter}>
+                        <Text style={styles.levelBadgeTextFooter}>Lvl {stats.level}</Text>
+                    </View>
+                </View>
+            </Animated.View>
         </View>
     );
 
@@ -376,7 +492,6 @@ export default function PetHomeScreen() {
                     )}
                 </View>
 
-                {/* Bottom Navigation */}
                 <View style={styles.bottomNav}>
                     <Pressable onPress={() => setActiveTab('home')} style={[styles.navItem, activeTab === 'home' && styles.navItemActive]}>
                         <Ionicons name="home" size={20} color={activeTab === 'home' ? '#FFF' : '#888'} />
@@ -392,47 +507,49 @@ export default function PetHomeScreen() {
                     </Pressable>
                 </View>
 
-                {/* Custom Purchase Modal */}
-                <Modal
-                    visible={showPurchaseModal}
-                    transparent={true}
-                    animationType="fade"
-                    onRequestClose={() => setShowPurchaseModal(false)}
-                >
+                {/* Purchase Modal */}
+                <Modal visible={showPurchaseModal} transparent={true} animationType="fade">
                     <View style={styles.modalOverlay}>
                         <View style={styles.modalContent}>
                             <View style={styles.modalHeader}>
-                                <View style={styles.modalIconBox}>
-                                    <Ionicons name="lock-closed" size={32} color="#A78BFF" />
-                                </View>
+                                <View style={styles.modalIconBox}><Ionicons name="lock-closed" size={32} color="#A78BFF" /></View>
                                 <Text style={styles.modalTitle}>Item Bloqueado</Text>
-                                <Text style={styles.modalDesc}>
-                                    Você ainda não possui o item <Text style={{ color: '#A78BFF', fontWeight: '900' }}>{selectedLockedItem?.name}</Text>. Deseja ir à loja agora?
-                                </Text>
+                                <Text style={styles.modalDesc}>Você ainda não possui o item <Text style={{ color: '#A78BFF', fontWeight: '900' }}>{selectedLockedItem?.name}</Text>. Deseja ir à loja agora?</Text>
                             </View>
+                            <View style={styles.modalFooter}>
+                                <Pressable style={styles.modalCancelBtn} onPress={() => setShowPurchaseModal(false)}><Text style={styles.modalCancelText}>Agora não</Text></Pressable>
+                                <Pressable style={styles.modalActionBtn} onPress={() => { setShowPurchaseModal(false); router.push({ pathname: '/shop', params: { tab: 'home', highlight: selectedLockedItem?.id } }); }}>
+                                    <LinearGradient colors={['#A78BFF', '#7C3AED']} style={styles.modalActionGradient}><Text style={styles.modalActionText}>Ir para Loja</Text><Ionicons name="cart" size={16} color="#FFF" style={{ marginLeft: 6 }} /></LinearGradient>
+                                </Pressable>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* Name Modal */}
+                <Modal visible={showNameModal} transparent={true} animationType="slide">
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHeader}>
+                                <View style={styles.modalIconBox}><Ionicons name="pencil" size={32} color="#A78BFF" /></View>
+                                <Text style={styles.modalTitle}>Nomear Pet</Text>
+                                <Text style={styles.modalDesc}>Como você quer chamar seu companheiro?</Text>
+                            </View>
+                            
+                            <TextInput
+                                style={styles.modalInput}
+                                placeholder="Ex: Rex, Luna, Pipoca..."
+                                placeholderTextColor="#666"
+                                value={tempName}
+                                onChangeText={setTempName}
+                                autoFocus={true}
+                                maxLength={15}
+                            />
 
                             <View style={styles.modalFooter}>
-                                <Pressable 
-                                    style={styles.modalCancelBtn}
-                                    onPress={() => setShowPurchaseModal(false)}
-                                >
-                                    <Text style={styles.modalCancelText}>Agora não</Text>
-                                </Pressable>
-                                <Pressable 
-                                    style={styles.modalActionBtn}
-                                    onPress={() => {
-                                        setShowPurchaseModal(false);
-                                        // Redireciona para loja indicando o item
-                                        router.push({ pathname: '/shop', params: { tab: 'home', highlight: selectedLockedItem?.id } });
-                                    }}
-                                >
-                                    <LinearGradient
-                                        colors={['#A78BFF', '#7C3AED']}
-                                        style={styles.modalActionGradient}
-                                    >
-                                        <Text style={styles.modalActionText}>Ir para Loja</Text>
-                                        <Ionicons name="cart" size={16} color="#FFF" style={{ marginLeft: 6 }} />
-                                    </LinearGradient>
+                                <Pressable style={styles.modalCancelBtn} onPress={() => setShowNameModal(false)}><Text style={styles.modalCancelText}>Cancelar</Text></Pressable>
+                                <Pressable style={styles.modalActionBtn} onPress={confirmNameUpdate}>
+                                    <LinearGradient colors={['#A78BFF', '#7C3AED']} style={styles.modalActionGradient}><Text style={styles.modalActionText}>Confirmar</Text></LinearGradient>
                                 </Pressable>
                             </View>
                         </View>
@@ -447,19 +564,9 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 50, paddingBottom: 10 },
     backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' },
-    headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    decorateBtnHeader: { 
-        backgroundColor: '#A78BFF', 
-        paddingHorizontal: 16, 
-        height: 36, 
-        borderRadius: 15, 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        gap: 6 
-    },
+    decorateBtnHeader: { backgroundColor: '#A78BFF', paddingHorizontal: 16, height: 36, borderRadius: 15, flexDirection: 'row', alignItems: 'center', gap: 6 },
     decorateBtnActive: { backgroundColor: '#FF4444' },
     decorateBtnText: { color: '#FFF', fontWeight: '900', fontSize: 13 },
-    
     homeContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     drawerOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 15 },
     roomContainer: { width: width, height: height * 0.7, backgroundColor: '#1C1C21', overflow: 'hidden', borderBottomLeftRadius: 40, borderBottomRightRadius: 40, borderWidth: 1, borderColor: '#333' },
@@ -471,9 +578,8 @@ const styles = StyleSheet.create({
     itemShadow: { width: 30, height: 8, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 10, marginTop: -5 },
     petPlacement: { position: 'absolute', bottom: 60, alignSelf: 'center', alignItems: 'center' },
     petShadow: { width: 100, height: 15, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 10, marginTop: -5 },
-    
     furnitureDrawer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#1C1C21', paddingVertical: 20, borderTopLeftRadius: 30, borderTopRightRadius: 30, borderTopWidth: 1, borderColor: '#333', zIndex: 20 },
-    headerCategories: { position: 'absolute', right: 0, left: 170, top: 54, height: 40, justifyContent: 'center', zIndex: 10 },
+    headerCategories: { position: 'absolute', right: 0, left: 145, top: 54, height: 40, justifyContent: 'center', zIndex: 10 },
     headerFadeLeft: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 15, zIndex: 11 },
     headerFadeRight: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 30, zIndex: 11 },
     categoryChipHeader: { paddingHorizontal: 12, height: 32, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)', marginHorizontal: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', justifyContent: 'center' },
@@ -481,30 +587,41 @@ const styles = StyleSheet.create({
     categoryText: { color: '#888', fontSize: 11, fontWeight: '700' },
     categoryTextActive: { color: '#FFF' },
     furnitureItem: { alignItems: 'center', marginHorizontal: 10, width: 70 },
+    furnitureItemLarge: { alignItems: 'center', marginHorizontal: 12, width: 85 },
+    accessoryIconBox: { width: 75, height: 75, borderRadius: 20, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center', marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+    drawerTitleSmall: { color: '#888', fontSize: 10, fontWeight: '900', letterSpacing: 1, marginLeft: 25, marginBottom: 15 },
     furnitureIconBox: { width: 60, height: 60, borderRadius: 15, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center', marginBottom: 8, position: 'relative' },
     lockOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
     furnitureLabel: { color: '#AAA', fontSize: 10, fontWeight: '700' },
 
-    petTabContainer: { flex: 1 },
-    petStatsHeader: { padding: 25, backgroundColor: 'rgba(167, 139, 255, 0.05)', borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-    petMainInfo: { flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 20 },
-    petNameLarge: { fontSize: 32, fontWeight: '900', color: '#FFF' },
-    levelBadge: { backgroundColor: '#A78BFF', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
-    levelBadgeText: { color: '#FFF', fontWeight: '900', fontSize: 12 },
-    statsGrid: { flexDirection: 'row', gap: 12, marginBottom: 25 },
-    statCard: { flex: 1, backgroundColor: '#1C1C21', padding: 15, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-    statVal: { fontSize: 18, fontWeight: '900', color: '#FFF', marginTop: 8 },
-    statLabel: { fontSize: 10, color: '#666', fontWeight: '700', marginTop: 2 },
-    xpProgressContainer: { width: '100%' },
-    xpLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-    xpLabel: { color: '#AAA', fontSize: 12, fontWeight: '700' },
-    xpValue: { color: '#FFF', fontSize: 12, fontWeight: '900' },
-    xpBarBackground: { height: 8, backgroundColor: '#2C2C31', borderRadius: 4, overflow: 'hidden' },
-    xpBarFill: { height: '100%', backgroundColor: '#A78BFF' },
-    sectionTitlePet: { fontSize: 18, fontWeight: '900', color: '#A78BFF', marginHorizontal: 25, marginTop: 25, marginBottom: 15 },
-    inventoryGridPet: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 12 },
-    inventoryItem: { width: (width - 64) / 3, height: 100, borderRadius: 20, backgroundColor: '#1C1C21', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+    petTabContainer: { flex: 1, backgroundColor: '#141419' },
+    petPreviewCenter: { alignItems: 'center', marginVertical: 40 },
+    speciesControlRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20 },
+    speciesArrowBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' },
+    headerTitleActive: { color: '#FFF', fontSize: 14, fontWeight: '800', marginLeft: 12 },
+    petShadowLarge: { width: width * 0.4, height: 20, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 20, marginTop: -10 },
+    inventorySection: { paddingHorizontal: 20 },
+    inventoryGridPet: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    inventoryItem: { width: (width - 64) / 3, height: 100, borderRadius: 25, backgroundColor: '#1C1C21', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
     itemLabelPet: { color: '#666', fontSize: 10, fontWeight: '700', marginTop: 8, textAlign: 'center' },
+    petStatsFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#1C1C21', padding: 20, borderTopLeftRadius: 35, borderTopRightRadius: 35, borderTopWidth: 1, borderColor: 'rgba(167, 139, 255, 0.2)', shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 20, elevation: 10 },
+    petMainInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+    speciesPillWrapper: { alignItems: 'center', marginTop: -45, marginBottom: 20 },
+    speciesPill: { flexDirection: 'row', backgroundColor: '#1C1C21', height: 40, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(167, 139, 255, 0.3)', alignItems: 'center', paddingHorizontal: 5, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+    speciesPillArrow: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' },
+    speciesLabelContainer: { paddingHorizontal: 15 },
+    speciesLabelText: { color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 2 },
+    petNameFooter: { fontSize: 24, fontWeight: '900', color: '#FFF' },
+    nameContainerFooter: { flexDirection: 'row', alignItems: 'center' },
+    levelBadgeFooter: { backgroundColor: '#A78BFF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    levelBadgeTextFooter: { color: '#FFF', fontWeight: '900', fontSize: 12 },
+    xpProgressFooter: { width: '50%' },
+    xpLabelFooter: { color: '#888', fontSize: 10, fontWeight: '800', marginBottom: 4, textAlign: 'right' },
+    xpBarBackgroundFooter: { height: 6, backgroundColor: '#2C2C31', borderRadius: 3, overflow: 'hidden' },
+    xpBarFillFooter: { height: '100%', backgroundColor: '#A78BFF' },
+    statsGridFooter: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+    statCardFooter: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.03)', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 15, alignItems: 'center', justifyContent: 'center', gap: 8 },
+    statValFooter: { fontSize: 14, fontWeight: '900', color: '#FFF' },
 
     trainingContainer: { flex: 1, alignItems: 'center' },
     sectionTitle: { fontSize: 24, fontWeight: '900', color: '#A78BFF', margin: 25 },
@@ -513,13 +630,10 @@ const styles = StyleSheet.create({
     trainDesc: { textAlign: 'center', color: '#888', marginTop: 10, lineHeight: 20 },
     trainBtn: { backgroundColor: '#A78BFF', paddingHorizontal: 40, paddingVertical: 15, borderRadius: 20, marginTop: 25 },
     trainBtnText: { color: '#FFF', fontWeight: '800' },
-
     bottomNav: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.2)', margin: 20, borderRadius: 25, padding: 10, height: 70, alignItems: 'center' },
     navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' },
     navItemActive: { backgroundColor: '#A78BFF', borderRadius: 20 },
     navText: { fontSize: 10, fontWeight: '800', marginTop: 4 },
-
-    // Modal Styles
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
     modalContent: { width: width * 0.85, backgroundColor: '#1C1C21', borderRadius: 30, padding: 30, borderWidth: 1, borderColor: 'rgba(167, 139, 255, 0.2)', alignItems: 'center' },
     modalHeader: { alignItems: 'center', marginBottom: 25 },
@@ -531,5 +645,6 @@ const styles = StyleSheet.create({
     modalCancelText: { color: '#888', fontWeight: '700' },
     modalActionBtn: { flex: 1.5, height: 50, borderRadius: 15, overflow: 'hidden' },
     modalActionGradient: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-    modalActionText: { color: '#FFF', fontWeight: '900' }
+    modalActionText: { color: '#FFF', fontWeight: '900' },
+    modalInput: { width: '100%', height: 55, backgroundColor: '#141419', borderRadius: 15, paddingHorizontal: 20, color: '#FFF', fontSize: 16, fontWeight: '600', borderWidth: 1, borderColor: 'rgba(167, 139, 255, 0.3)', marginBottom: 25 }
 });

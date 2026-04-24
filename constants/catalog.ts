@@ -1,4 +1,4 @@
-export type ShopTab = 'accessory' | 'consumable' | 'home' | 'gem_store';
+export type ShopTab = 'accessory' | 'player_accessory' | 'consumable' | 'home' | 'gem_store';
 export type ItemRarity = 'common' | 'rare' | 'epic' | 'legendary';
 
 export const RARITY_COLORS: Record<ItemRarity, { bg: string; darkBg: string; border: string; glow: string }> = {
@@ -10,21 +10,27 @@ export const RARITY_COLORS: Record<ItemRarity, { bg: string; darkBg: string; bor
 
 export const CATALOG = [
     // Acessórios Soft Currency
-    { id: 'bow', name: 'Laço Rosa', price: 150, currency: 'coins', icon: 'ribbon', iconLib: 'Ionicons', tab: 'accessory', rarity: 'common' as ItemRarity, description: 'Um laço charmoso para enfeitar seu pet.' },
-    { id: 'glasses', name: 'Óculos do Saber', price: 200, currency: 'coins', icon: 'glasses', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'common' as ItemRarity, description: 'Deixa seu pet com cara de intelectual.' },
-    { id: 'flower', name: 'Flor de Sakura', price: 350, currency: 'coins', icon: 'flower-tulip', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'common' as ItemRarity, description: 'Uma flor delicada colhida no oriente.' },
-    { id: 'cap', name: 'Boné Esportivo', price: 400, currency: 'coins', icon: 'hat-fedora', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'common' as ItemRarity, description: 'Estilo urbano para o dia a dia.' },
-    { id: 'scarf', name: 'Cachecol Fofo', price: 1000, currency: 'coins', icon: 'muffler', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'rare' as ItemRarity, description: 'Protege seu pet nos dias mais frios.' },
-    { id: 'necklace', name: 'Colar de Pérolas', price: 2500, currency: 'coins', icon: 'necklace', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'rare' as ItemRarity, description: 'Elegância e sofisticação para ocasiões especiais.' },
-    { id: 'hat_fisher', name: 'Chapéu Pescador', price: 3000, currency: 'coins', icon: 'hook', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'rare' as ItemRarity, description: 'Ideal para um dia de aventura ao sol.' },
-    { id: 'cloak', name: 'Capa de Viajante', price: 5000, currency: 'coins', icon: 'tshirt-crew', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'epic' as ItemRarity, description: 'Uma capa robusta para grandes exploradores.' },
+    { id: 'bow', name: 'Laço Rosa', price: 150, currency: 'coins', icon: 'ribbon', iconLib: 'Ionicons', tab: 'accessory', category: 'Chapéu', rarity: 'common' as ItemRarity, description: 'Um laço charmoso para enfeitar seu pet.' },
+    { id: 'glasses', name: 'Óculos do Saber', price: 200, currency: 'coins', icon: 'glasses', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Óculos', rarity: 'common' as ItemRarity, description: 'Deixa seu pet com cara de intelectual.' },
+    { id: 'flower', name: 'Flor de Sakura', price: 350, currency: 'coins', icon: 'flower-tulip', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Chapéu', rarity: 'common' as ItemRarity, description: 'Uma flor delicada colhida no oriente.' },
+    { id: 'cap', name: 'Boné Esportivo', price: 400, currency: 'coins', icon: 'hat-fedora', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Chapéu', rarity: 'common' as ItemRarity, description: 'Estilo urbano para o dia a dia.' },
+    { id: 'scarf', name: 'Cachecol Fofo', price: 1000, currency: 'coins', icon: 'muffler', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Superior', rarity: 'rare' as ItemRarity, description: 'Protege seu pet nos dias mais frios.' },
+    { id: 'necklace', name: 'Colar de Pérolas', price: 2500, currency: 'coins', icon: 'necklace', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Superior', rarity: 'rare' as ItemRarity, description: 'Elegância e sofisticação para ocasiões especiais.' },
+    { id: 'hat_fisher', name: 'Chapéu Pescador', price: 3000, currency: 'coins', icon: 'hook', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Chapéu', rarity: 'rare' as ItemRarity, description: 'Ideal para um dia de aventura ao sol.' },
+    { id: 'cloak', name: 'Capa de Viajante', price: 5000, currency: 'coins', icon: 'tshirt-crew', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Superior', rarity: 'epic' as ItemRarity, description: 'Uma capa robusta para grandes exploradores.' },
 
     // Acessórios Hard Currency (Gems)
-    { id: 'crown', name: 'Coroa Imperial', price: 50, currency: 'gems', icon: 'crown', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'epic' as ItemRarity },
-    { id: 'shades', name: 'Óculos Estilo', price: 80, currency: 'gems', icon: 'sunglasses', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'epic' as ItemRarity },
-    { id: 'halo', name: 'Aura Celestial', price: 150, currency: 'gems', icon: 'star-four-points', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'legendary' as ItemRarity },
-    { id: 'vr_headset', name: 'Óculos VR Cyber', price: 250, currency: 'gems', icon: 'virtual-reality', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'legendary' as ItemRarity },
-    { id: 'magic_wand', name: 'Varinha Estelar', price: 500, currency: 'gems', icon: 'magic-staff', iconLib: 'MaterialCommunityIcons', tab: 'accessory', rarity: 'legendary' as ItemRarity },
+    { id: 'crown', name: 'Coroa Imperial', price: 50, currency: 'gems', icon: 'crown', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Chapéu', rarity: 'epic' as ItemRarity },
+    { id: 'shades', name: 'Óculos Estilo', price: 80, currency: 'gems', icon: 'sunglasses', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Óculos', rarity: 'epic' as ItemRarity },
+    { id: 'halo', name: 'Aura Celestial', price: 150, currency: 'gems', icon: 'star-four-points', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Chapéu', rarity: 'legendary' as ItemRarity },
+    { id: 'vr_headset', name: 'Óculos VR Cyber', price: 250, currency: 'gems', icon: 'virtual-reality', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Óculos', rarity: 'legendary' as ItemRarity },
+    { id: 'magic_wand', name: 'Varinha Estelar', price: 500, currency: 'gems', icon: 'magic-staff', iconLib: 'MaterialCommunityIcons', tab: 'accessory', category: 'Superior', rarity: 'legendary' as ItemRarity },
+
+    // Roupas de Personagem (Explorador)
+    { id: 'player_sneakers', name: 'Tênis de Explorador', price: 500, currency: 'coins', icon: 'shoe-sneaker', iconLib: 'MaterialCommunityIcons', tab: 'player_accessory', category: 'Tênis', rarity: 'common' as ItemRarity },
+    { id: 'player_jacket', name: 'Jaqueta Bomber', price: 1200, currency: 'coins', icon: 'tshirt-crew', iconLib: 'MaterialCommunityIcons', tab: 'player_accessory', category: 'Superior', rarity: 'rare' as ItemRarity },
+    { id: 'player_headphones', name: 'Fones de Ouvido', price: 45, currency: 'gems', icon: 'headphones', iconLib: 'MaterialCommunityIcons', tab: 'player_accessory', category: 'Superior', rarity: 'epic' as ItemRarity },
+    { id: 'player_shades', name: 'Shades Cyberpunk', price: 60, currency: 'gems', icon: 'sunglasses', iconLib: 'MaterialCommunityIcons', tab: 'player_accessory', category: 'Óculos', rarity: 'legendary' as ItemRarity },
 
     // Itens de Casinha (Home)
     { id: 'pet_bed', name: 'Caminha Confortável', price: 1200, currency: 'coins', icon: 'bed-outline', iconLib: 'Ionicons', tab: 'home', category: 'Móveis', rarity: 'common' as ItemRarity, description: 'Um lugar macio para seu pet tirar um cochilo.' },

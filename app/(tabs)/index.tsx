@@ -364,10 +364,14 @@ export default function MapScreen() {
                     avatar: p.avatar,
                     lat: loc?.latitude || 0,
                     lon: loc?.longitude || 0,
-                    online: loc ? (new Date().getTime() - new Date(loc.updated_at).getTime()) < 60000 : false,
+                    online: loc ? (new Date().getTime() - new Date(loc.updated_at).getTime()) < 60000 : (p.online || false),
                     battery: 85,
-                    since: loc ? 'Agora' : 'Offline',
-                    hasLocation: !!loc
+                    since: loc ? 'Agora' : (p.since || 'Offline'),
+                    hasLocation: !!loc,
+                    level: p.level || 1,
+                    xp: p.xp || 0,
+                    species: p.species || 'bunny',
+                    wander_id: p.wander_id || p.wanderId || `#${p.id?.substring(0, 6) || '?'}`
                 };
             });
             // @ts-ignore
@@ -1192,36 +1196,71 @@ export default function MapScreen() {
                                 </View>
                             </View>
 
-                            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 30, paddingHorizontal: 20 }}>
-                                <Pressable 
-                                    style={{ flex: 1, height: 60, borderRadius: 20, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#444' }}
-                                    onPress={() => handleToggleLike(selectedMember.id)}
-                                >
-                                    <Ionicons 
-                                        name={likedIds.includes(selectedMember.id) ? "heart" : "heart-outline"} 
-                                        size={28} 
-                                        color={likedIds.includes(selectedMember.id) ? "#FF4444" : "#FFF"} 
-                                    />
-                                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>{likedIds.includes(selectedMember.id) ? 'Curtiu' : 'Curtir'}</Text>
-                                </Pressable>
+                            {/* Stats Grid — Nível, XP, Pet */}
+                            <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, paddingHorizontal: 20 }}>
+                                <View style={{ flex: 1, backgroundColor: '#1C1C21', borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#333' }}>
+                                    <Text style={{ color: '#888', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>NÍVEL</Text>
+                                    <Text style={{ color: '#A78BFF', fontSize: 24, fontWeight: '900', marginTop: 4 }}>{selectedMember.level || 1}</Text>
+                                </View>
+                                <View style={{ flex: 1, backgroundColor: '#1C1C21', borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#333' }}>
+                                    <Text style={{ color: '#888', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>XP</Text>
+                                    <Text style={{ color: '#A78BFF', fontSize: 24, fontWeight: '900', marginTop: 4 }}>{selectedMember.xp || 0}</Text>
+                                </View>
+                                <View style={{ flex: 1, backgroundColor: '#1C1C21', borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#333' }}>
+                                    <Text style={{ color: '#888', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>PET</Text>
+                                    <View style={{ marginTop: 6 }}>
+                                        <Ionicons name="paw" size={22} color="#A78BFF" />
+                                    </View>
+                                </View>
+                            </View>
 
+                            {/* Ações Rápidas (Chat e Curtir) */}
+                            <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginTop: 16 }}>
                                 <Pressable 
-                                    style={{ flex: 1, height: 60, borderRadius: 20, backgroundColor: '#A78BFF', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{ flex: 1, backgroundColor: '#A78BFF', paddingVertical: 14, borderRadius: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                                     onPress={() => handleOpenChat(selectedMember.id, selectedMember.name, selectedMember.avatar)}
                                 >
-                                    <Ionicons name="chatbubble-ellipses" size={28} color="#FFF" />
-                                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>Chat</Text>
+                                    <Ionicons name="chatbubble" size={20} color="#FFF" />
+                                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>Chat</Text>
+                                </Pressable>
+                                <Pressable 
+                                    style={{ flex: 1, backgroundColor: likedIds.includes(selectedMember.id) ? '#FF444422' : '#333', paddingVertical: 14, borderRadius: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: likedIds.includes(selectedMember.id) ? '#FF4444' : '#444' }}
+                                    onPress={() => handleToggleLike(selectedMember.id)}
+                                >
+                                    <Ionicons name={likedIds.includes(selectedMember.id) ? "heart" : "heart-outline"} size={20} color={likedIds.includes(selectedMember.id) ? "#FF4444" : "#FFF"} />
+                                    <Text style={{ color: likedIds.includes(selectedMember.id) ? '#FF4444' : '#FFF', fontWeight: '800', fontSize: 15 }}>{likedIds.includes(selectedMember.id) ? 'Curtiu' : 'Curtir'}</Text>
                                 </Pressable>
                             </View>
 
-                            <View style={{ padding: 24, marginTop: 20, backgroundColor: '#16161D', borderRadius: 24, marginHorizontal: 20 }}>
+                            {/* Informações Detalhadas */}
+                            <View style={{ padding: 24, marginTop: 16, backgroundColor: '#16161D', borderRadius: 24, marginHorizontal: 20 }}>
                                 <Text style={{ color: '#888', fontWeight: '800', fontSize: 12, letterSpacing: 1, marginBottom: 16 }}>INFORMAÇÕES DO EXPLORADOR</Text>
                                 
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Ionicons name="finger-print" size={20} color="#A78BFF" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ color: '#FFF', fontWeight: '700' }}>Wander-ID</Text>
+                                        <Text style={{ color: '#AAA', fontSize: 13 }}>#{selectedMember.wander_id || selectedMember.id?.substring(0, 8) || '?'}</Text>
+                                    </View>
+                                </View>
+
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Ionicons name="paw" size={20} color="#A78BFF" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ color: '#FFF', fontWeight: '700' }}>Pet</Text>
+                                        <Text style={{ color: '#AAA', fontSize: 13 }}>{selectedMember.species || 'bunny'}</Text>
+                                    </View>
+                                </View>
+
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                                     <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
                                         <Ionicons name="location" size={20} color="#A78BFF" />
                                     </View>
-                                    <View>
+                                    <View style={{ flex: 1 }}>
                                         <Text style={{ color: '#FFF', fontWeight: '700' }}>Localização</Text>
                                         <Text style={{ color: '#AAA', fontSize: 13 }}>{selectedMember.hasLocation ? `${selectedMember.lat.toFixed(4)}, ${selectedMember.lon.toFixed(4)}` : 'Oculta pelo usuário'}</Text>
                                     </View>
@@ -1231,7 +1270,7 @@ export default function MapScreen() {
                                     <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
                                         <Ionicons name="time" size={20} color="#A78BFF" />
                                     </View>
-                                    <View>
+                                    <View style={{ flex: 1 }}>
                                         <Text style={{ color: '#FFF', fontWeight: '700' }}>Última Atividade</Text>
                                         <Text style={{ color: '#AAA', fontSize: 13 }}>{selectedMember.since}</Text>
                                     </View>
@@ -1292,46 +1331,37 @@ export default function MapScreen() {
                                 </View>
                             </Pressable>
 
-                            {circleMembers.map(m => {
-                                const isLiked = likedIds.includes(m.id);
-                                return (
-                                    <View key={m.id} style={styles.memberRow}>
-                                        <Pressable 
-                                            style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 16 }}
-                                            onPress={() => handleMemberTap(m)}
-                                        >
-                                            <View style={[styles.memberAvatar, { borderColor: m.online ? '#4ADE80' : '#333', overflow: 'hidden' }]}>
-                                                {m.avatar ? (
-                                                    <Image source={{ uri: m.avatar }} style={{ width: '100%', height: '100%' }} />
-                                                ) : (
-                                                    <Text style={{ color: m.online ? '#A78BFF' : '#555', fontWeight: '800' }}>{m.name[0]}</Text>
-                                                )}
+                            {circleMembers.map(m => (
+                                <Pressable key={m.id} style={styles.memberRow} onPress={() => handleMemberTap(m)}>
+                                    <View style={[styles.memberAvatar, { borderColor: m.online ? '#4ADE80' : '#333', overflow: 'hidden' }]}>
+                                        {m.avatar ? (
+                                            <Image source={{ uri: m.avatar }} style={{ width: '100%', height: '100%' }} />
+                                        ) : (
+                                            <Text style={{ color: m.online ? '#A78BFF' : '#555', fontWeight: '800' }}>{m.name[0]}</Text>
+                                        )}
+                                    </View>
+                                    <View style={styles.memberInfo}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                            <Text style={{ color: '#FFF', fontWeight: '800' }}>{m.name}</Text>
+                                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: m.online ? '#4ADE80' : '#555' }} />
+                                        </View>
+                                        <Text style={{ color: '#AAA', fontSize: 11 }}>
+                                            {m.hasLocation ? `${m.lat.toFixed(4)}, ${m.lon.toFixed(4)}` : 'Localização oculta'}
+                                        </Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#A78BFF18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                                <Ionicons name="trending-up" size={9} color="#A78BFF" />
+                                                <Text style={{ fontSize: 9, fontWeight: '800', color: '#A78BFF' }}>Lv {m.level || 1}</Text>
                                             </View>
-                                            <View style={styles.memberInfo}>
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                    <Text style={{ color: '#FFF', fontWeight: '800' }}>{m.name}</Text>
-                                                </View>
-                                                <Text style={{ color: '#AAA', fontSize: 11 }}>
-                                                    {m.hasLocation ? `${m.lat.toFixed(4)}, ${m.lon.toFixed(4)}` : 'Localização oculta'}
-                                                </Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#ffffff08', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                                <Ionicons name="paw" size={9} color="#888" />
+                                                <Text style={{ fontSize: 9, fontWeight: '700', color: '#888' }}>{m.species || 'bunny'}</Text>
                                             </View>
-                                        </Pressable>
-
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                                            <AnimatedLikeButton 
-                                                isLiked={isLiked} 
-                                                onToggle={() => handleToggleLike(m.id)} 
-                                            />
-                                            <Pressable onPress={() => handleOpenChat(m.id, m.name, m.avatar)}>
-                                                <Ionicons name="chatbubble-ellipses-outline" size={22} color="#AAA" />
-                                            </Pressable>
-                                            <Pressable onPress={() => handleMemberTap(m)}>
-                                                <Ionicons name="chevron-forward" size={18} color="#444" />
-                                            </Pressable>
                                         </View>
                                     </View>
-                                );
-                            })}
+                                    <Ionicons name="chevron-forward" size={18} color="#444" />
+                                </Pressable>
+                            ))}
                         </ScrollView>
                     </>
                 )}

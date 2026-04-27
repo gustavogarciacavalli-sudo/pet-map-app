@@ -7,6 +7,13 @@ import { decode } from 'base64-arraybuffer';
 const mockChats: Record<string, any[]> = {};
 const mockLikes: Set<string> = new Set();
 const botSubscriptions: Record<string, (msg: any) => void> = {};
+const mockHandledRequestIds: Set<string> = new Set();
+const mockAcceptedFriendIds: Set<string> = new Set();
+const mockJoinedClanIds: Set<string> = new Set();
+const localCreatedClans: any[] = [];
+const clanAdmins: Record<string, string> = {};
+const clanDescriptions: Record<string, string> = {};
+const clanAvatars: Record<string, string> = {};
 
 // Utilitário para validar UUID e evitar erros 22P02 no banco
 export const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -236,22 +243,59 @@ export const AuthService = {
     },
 
     createGroup: async (name: string, founderId: string, password?: string, isPublic: boolean = true) => {
-        if (!isValidUUID(founderId)) throw new Error("ID de fundador inválido.");
+        if (!isValidUUID(founderId)) {
+            // Mock: create a local-only clan
+            const clanId = `local-clan-${Date.now()}`;
+            clanAdmins[clanId] = founderId;
+            const localClan = {
+                id: clanId,
+                name,
+                password: password || null,
+                is_public: isPublic,
+                admin_id: founderId,
+                description: '',
+                avatar: '',
+                group_members: [
+                    { user_id: founderId, profiles: { id: founderId, name: 'Você', avatar: null, location: '', wander_id: '' } }
+                ]
+            };
+            localCreatedClans.push(localClan);
+            return localClan;
+        }
         try {
             const { data, error } = await supabase
                 .from('groups')
-                .insert([{ name, founder_id: founderId, password, is_public: isPublic }])
+                .insert([{ name, password, is_public: isPublic }])
                 .select().single();
             if (error) throw error;
             await supabase.from('group_members').insert([{ group_id: data.id, user_id: founderId }]);
+            clanAdmins[data.id] = founderId; // Track admin locally since column is missing
             return data;
-        } catch (error) {
-            console.error("Erro ao criar clã:", error);
-            throw error;
+        } catch (error: any) {
+            console.warn("Erro no Supabase ao criar clã (RLS/Schema), usando fallback local:", error.message);
+            // Fallback to local memory clan
+            const clanId = `local-clan-${Date.now()}`;
+            clanAdmins[clanId] = founderId;
+            const localClan = {
+                id: clanId,
+                name,
+                password: password || null,
+                is_public: isPublic,
+                admin_id: founderId,
+                description: '',
+                avatar: '',
+                group_members: [
+                    { user_id: founderId, profiles: { id: founderId, name: 'Você', avatar: null, location: '', wander_id: '' } }
+                ]
+            };
+            localCreatedClans.push(localClan);
+            return localClan;
         }
     },
 
     joinGroup: async (groupId: string, userId: string) => {
+        // Track locally for mock users
+        mockJoinedClanIds.add(groupId);
         if (!isValidUUID(userId)) return;
         try {
             await supabase.from('group_members').upsert([{ group_id: groupId, user_id: userId }]);
@@ -260,12 +304,11 @@ export const AuthService = {
         }
     },
 
-    getGroups: async () => {
+    getGroups: async (currentUserId?: string) => {
         try {
-            // First, get real data
             let realGroups: any[] = [];
             const { data, error } = await supabase.from('groups').select(`
-                id, name, is_public, password, founder_id,
+                id, name, is_public, password,
                 group_members(user_id, profiles(id, name, avatar, location, wander_id))
             `);
             if (!error && data) realGroups = data;
@@ -276,7 +319,9 @@ export const AuthService = {
                 name: 'Exploradores Lendários (Demo)',
                 is_public: true,
                 password: null,
-                founder_id: 'bot-1',
+                admin_id: 'bot-1',
+                description: 'Um clã para os maiores exploradores do mapa!',
+                avatar: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=200&auto=format&fit=crop',
                 group_members: [
                     { user_id: 'bot-1', profiles: { id: 'bot-1', name: 'Gus', avatar: 'https://i.pravatar.cc/150?u=gus', location: 'Curitiba, BR', wander_id: '#WP-GUS' } },
                     { user_id: 'bot-2', profiles: { id: 'bot-2', name: 'Aline', avatar: 'https://i.pravatar.cc/150?u=aline', location: 'São Paulo, BR', wander_id: '#WP-ALI' } },
@@ -284,10 +329,55 @@ export const AuthService = {
                 ]
             };
 
-            return [...realGroups, fakeClan];
+            const fakeClanPrivate = {
+                id: 'fake-clan-002',
+                name: 'Sentinelas do Crepúsculo',
+                is_public: false,
+                password: '1234',
+                admin_id: 'bot-2',
+                description: 'Somente convidados.',
+                avatar: '',
+                group_members: [
+                    { user_id: 'bot-2', profiles: { id: 'bot-2', name: 'Aline', avatar: 'https://i.pravatar.cc/150?u=aline', location: 'São Paulo, BR', wander_id: '#WP-ALI' } }
+                ]
+            };
+
+            const allGroups = [...realGroups, fakeClan, fakeClanPrivate, ...localCreatedClans].map(g => ({
+                ...g,
+                admin_id: clanAdmins[g.id] || g.admin_id || g.group_members?.[0]?.user_id,
+                description: clanDescriptions[g.id] || g.description || '',
+                avatar: clanAvatars[g.id] || g.avatar || ''
+            }));
+
+            // Inject current user into clans they joined locally
+            if (currentUserId) {
+                for (const g of allGroups) {
+                    if (mockJoinedClanIds.has(g.id)) {
+                        const alreadyMember = g.group_members.some((gm: any) => gm.user_id === currentUserId || gm.profiles?.id === currentUserId);
+                        if (!alreadyMember) {
+                            g.group_members.push({ user_id: currentUserId, profiles: { id: currentUserId, name: 'Você', avatar: null, location: '', wander_id: '' } });
+                        }
+                    }
+                }
+            }
+
+            return allGroups;
         } catch (error) {
             console.error("Erro ao buscar clãs:", error);
             return [];
+        }
+    },
+
+    updateClanDetailsLocal: (clanId: string, description: string, avatar: string) => {
+        clanDescriptions[clanId] = description;
+        clanAvatars[clanId] = avatar;
+    },
+
+    removeMemberLocal: (clanId: string, memberId: string) => {
+        // mock removal logic
+        const localClan = localCreatedClans.find(c => c.id === clanId);
+        if (localClan) {
+            localClan.group_members = localClan.group_members.filter((m: any) => m.user_id !== memberId && m.profiles?.id !== memberId);
         }
     },
 
@@ -305,7 +395,8 @@ export const AuthService = {
     },
 
     getFriendsCloud: async (userId: string) => {
-        if (!isValidUUID(userId)) return ['bot-1', 'bot-2']; // Mock some friends by default
+        const dynamicMockFriends = Array.from(mockAcceptedFriendIds);
+        if (!isValidUUID(userId)) return ['bot-1', 'bot-2', ...dynamicMockFriends];
         try {
             const { data, error } = await supabase.from('friendships').select('user_id1, user_id2')
                 .or(`user_id1.eq.${userId},user_id2.eq.${userId}`).eq('status', 'accepted');
@@ -313,17 +404,19 @@ export const AuthService = {
             const friends = data.map((f: any) => f.user_id1 === userId ? f.user_id2 : f.user_id1);
             
             // INJECT FAKE FRIENDS!
-            return [...new Set([...friends, 'bot-1', 'bot-2'])];
+            return [...new Set([...friends, 'bot-1', 'bot-2', ...dynamicMockFriends])];
         } catch (error) {
             console.error("Erro ao buscar amigos:", error);
-            return ['bot-1', 'bot-2'];
+            return ['bot-1', 'bot-2', ...dynamicMockFriends];
         }
     },
 
     getFriendsProfilesCloud: async (friendIds: string[]) => {
         const mockBotProfiles = [
-            { id: 'bot-1', name: 'Gus', avatar: 'https://i.pravatar.cc/150?u=gus', location: 'Curitiba, BR', species: 'puppy', online: true, since: '08:30', wander_id: '#WP-GUS' },
-            { id: 'bot-2', name: 'Aline', avatar: 'https://i.pravatar.cc/150?u=aline', location: 'São Paulo, BR', species: 'cat', online: true, since: '09:15', wander_id: '#WP-ALI' }
+            { id: 'bot-1', name: 'Gus', avatar: 'https://i.pravatar.cc/150?u=gus', location: 'Curitiba, BR', species: 'puppy', online: true, since: '08:30', wander_id: '#WP-GUS', level: 3, xp: 120 },
+            { id: 'bot-2', name: 'Aline', avatar: 'https://i.pravatar.cc/150?u=aline', location: 'São Paulo, BR', species: 'cat', online: true, since: '09:15', wander_id: '#WP-ALI', level: 5, xp: 280 },
+            { id: 'bot-3', name: 'Marcos', avatar: 'https://i.pravatar.cc/150?u=marcos', location: 'Rio de Janeiro, BR', species: 'bunny', online: false, since: '14:30', wander_id: '#WP-MAR', level: 2, xp: 60 },
+            { id: 'bot-4', name: 'Lucas', avatar: 'https://i.pravatar.cc/150?u=lucas', location: 'Belo Horizonte, BR', species: 'puppy', online: true, since: 'Agora', wander_id: '#WP-LUC', level: 4, xp: 200 }
         ];
 
         const realIds = friendIds.filter(id => isValidUUID(id));
@@ -369,14 +462,14 @@ export const AuthService = {
     },
 
     getPendingRequestsCloud: async (userId: string) => {
-        // INJECT MOCK PENDING REQUEST
+        // INJECT MOCK PENDING REQUEST (only if not yet handled)
         const mockRequests = [
             {
                 id: 'mock-req-1',
                 user_id1: 'bot-4',
                 profiles: { name: 'Lucas', avatar: 'https://i.pravatar.cc/150?u=lucas', wander_id: '#WP-LUC' }
             }
-        ];
+        ].filter(r => !mockHandledRequestIds.has(r.id));
 
         if (!isValidUUID(userId)) return mockRequests;
         try {
@@ -392,6 +485,15 @@ export const AuthService = {
     },
 
     respondFriendRequestCloud: async (requestId: string, status: 'accepted' | 'declined') => {
+        // Handle mock requests in memory
+        if (requestId.startsWith('mock-')) {
+            mockHandledRequestIds.add(requestId);
+            if (status === 'accepted') {
+                // Find which bot this request was from and add to friends
+                if (requestId === 'mock-req-1') mockAcceptedFriendIds.add('bot-4');
+            }
+            return;
+        }
         try {
             if (status === 'accepted') {
                 await supabase.from('friendships').update({ status: 'accepted' }).eq('id', requestId);

@@ -945,10 +945,14 @@ export default function SocialScreen() {
                                 </View>
                                 <View style={{ flex: 1, paddingTop: 30 }}>
                                     <Text style={[styles.cardName, { color: colors.text }]}>{activePreviewMember?.name || 'Explorador'}</Text>
-                                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.subtext, marginTop: 2 }}>#{activePreviewMember?.id?.substring(0, 8) || '?'}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: activePreviewMember?.online ? '#4CAF50' : '#E74C3C' }} />
+                                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.subtext }}>{activePreviewMember?.online ? 'Online' : 'Offline'}</Text>
+                                    </View>
                                 </View>
                             </View>
 
+                            {/* Stats Grid */}
                             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
                                 <View style={{ flex: 1, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', padding: 14, borderRadius: 14, alignItems: 'center' }}>
                                     <Text style={{ fontSize: 9, color: colors.subtext, fontWeight: '700', letterSpacing: 0.8 }}>LEVEL</Text>
@@ -958,48 +962,48 @@ export default function SocialScreen() {
                                     <Text style={{ fontSize: 9, color: colors.subtext, fontWeight: '700', letterSpacing: 0.8 }}>XP</Text>
                                     <Text style={{ fontSize: 20, fontWeight: '800', color: colors.primary, marginTop: 2 }}>{activePreviewMember?.xp || 0}</Text>
                                 </View>
+                                <View style={{ flex: 1, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', padding: 14, borderRadius: 14, alignItems: 'center' }}>
+                                    <Text style={{ fontSize: 9, color: colors.subtext, fontWeight: '700', letterSpacing: 0.8 }}>PET</Text>
+                                    <View style={{ marginTop: 4 }}>
+                                        <Ionicons name="paw" size={18} color={colors.primary} />
+                                    </View>
+                                </View>
                             </View>
 
-                            <View style={[styles.cardDataRow, { borderColor: colors.border, borderTopWidth: 1, paddingTop: 14 }]}>
+                            {/* Info Detalhada */}
+                            <View style={[styles.cardDataRow, { borderColor: colors.border, borderTopWidth: 1, borderBottomWidth: 0, paddingTop: 14 }]}>
                                 <View style={styles.cardDataItem}>
+                                    <Ionicons name="finger-print-outline" size={16} color={colors.primary} />
+                                    <Text style={[styles.cardDataText, { color: colors.subtext, flex: 1 }]} numberOfLines={1}>
+                                        Wander-ID: #{activePreviewMember?.wander_id || activePreviewMember?.id?.substring(0, 8) || '?'}
+                                    </Text>
+                                </View>
+                                <View style={[styles.cardDataItem, { marginTop: 10 }]}>
                                     <Ionicons name="location-outline" size={16} color={colors.primary} />
                                     <Text style={[styles.cardDataText, { color: colors.subtext, flex: 1 }]} numberOfLines={1}>
                                         {activePreviewMember?.location || 'Área Selvagem'}
                                     </Text>
                                 </View>
+                                <View style={[styles.cardDataItem, { marginTop: 10 }]}>
+                                    <Ionicons name="paw-outline" size={16} color={colors.primary} />
+                                    <Text style={[styles.cardDataText, { color: colors.subtext, flex: 1 }]} numberOfLines={1}>
+                                        Pet: {activePreviewMember?.species || 'bunny'}
+                                    </Text>
+                                </View>
                             </View>
 
-                            <View style={styles.cardActions}>
-                                <Pressable
-                                    onPress={() => {
-                                        setIsMemberCardVisible(false);
-                                        handleOpenChat(activePreviewMember.id, activePreviewMember.name, activePreviewMember.avatar);
-                                    }}
-                                    style={[styles.cardBtn, { backgroundColor: colors.primary, flex: 2 }]}
-                                >
-                                    <Ionicons name="chatbubble-outline" size={18} color="#FFF" />
-                                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>Chat</Text>
-                                </Pressable>
-                                {activeSocialSubTab === 'recomendados' && (
+                            {/* Ações: apenas Recomendar (quando aplicável) */}
+                            {activeSocialSubTab === 'recomendados' && (
+                                <View style={[styles.cardActions, { marginTop: 16 }]}>
                                     <Pressable
                                         onPress={() => handleRecommend(activePreviewMember.id)}
-                                        style={[styles.cardBtn, { backgroundColor: colors.primary + '15', flex: 2 }]}
+                                        style={[styles.cardBtn, { backgroundColor: colors.primary + '15', flex: 1 }]}
                                     >
                                         <Ionicons name="share-social" size={18} color={colors.primary} />
                                         <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>Recomendar</Text>
                                     </Pressable>
-                                )}
-                                <Pressable
-                                    onPress={() => handleToggleLike(activePreviewMember.id)}
-                                    style={[styles.cardBtn, { backgroundColor: likedIds.includes(activePreviewMember?.id) ? colors.primary + '18' : (isDarkMode ? '#ffffff08' : '#0000000A'), flex: 1 }]}
-                                >
-                                    <Ionicons
-                                        name={likedIds.includes(activePreviewMember?.id) ? "heart" : "heart-outline"}
-                                        size={20}
-                                        color={colors.primary}
-                                    />
-                                </Pressable>
-                            </View>
+                                </View>
+                            )}
                         </View>
                     </Pressable>
                 </Pressable>

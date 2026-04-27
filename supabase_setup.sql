@@ -64,9 +64,11 @@ CREATE TABLE IF NOT EXISTS public.social_likes (
 CREATE TABLE IF NOT EXISTS public.groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    founder_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    admin_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     password TEXT,
     is_public BOOLEAN DEFAULT true,
+    description TEXT,
+    avatar TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

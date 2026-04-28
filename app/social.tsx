@@ -1,5 +1,6 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Battery from 'expo-battery';
+import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -62,6 +63,8 @@ export default function SocialScreen() {
     const [clanChatInput, setClanChatInput] = useState('');
     const [clanChatMessages, setClanChatMessages] = useState<Record<string, ChatMessage[]>>({});
     const clanChatScrollRef = useRef<ScrollView>(null);
+    const [chatMediaUri, setChatMediaUri] = useState<string | null>(null);
+    const [clanChatMediaUri, setClanChatMediaUri] = useState<string | null>(null);
     const [isMemberCardVisible, setIsMemberCardVisible] = useState(false);
     const [activePreviewMember, setActivePreviewMember] = useState<any>(null);
     const [likedIds, setLikedIds] = useState<string[]>([]);
@@ -397,6 +400,23 @@ export default function SocialScreen() {
         
         setClanChatInput('');
         setTimeout(() => clanChatScrollRef.current?.scrollToEnd(), 100);
+    };
+
+    const handlePickMedia = async (target: 'chat' | 'clan') => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão necessária', 'Permita o acesso à galeria para enviar fotos.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]?.uri) {
+            if (target === 'chat') setChatMediaUri(result.assets[0].uri);
+            else setClanChatMediaUri(result.assets[0].uri);
+        }
     };
 
     useEffect(() => {
@@ -979,31 +999,144 @@ export default function SocialScreen() {
                                 </View>
                             ) : (
                                 <View style={{ flex: 1 }}>
-                                    <ScrollView style={{ flex: 1, padding: 20 }} ref={clanChatScrollRef} onContentSizeChange={() => clanChatScrollRef.current?.scrollToEnd()}>
+                                    {/* Clan Chat Messages */}
+                                    <ScrollView
+                                        style={{ flex: 1 }}
+                                        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 20, gap: 4 }}
+                                        ref={clanChatScrollRef}
+                                        onContentSizeChange={() => clanChatScrollRef.current?.scrollToEnd()}
+                                    >
                                         {clanChatMessages[activeCircle.id] && clanChatMessages[activeCircle.id].length > 0 ? (
-                                            clanChatMessages[activeCircle.id].map(m => (
-                                                <View key={m.id} style={{ alignSelf: m.senderId === 'me' ? 'flex-end' : 'flex-start', backgroundColor: m.senderId === 'me' ? colors.primary : colors.accent, padding: 12, borderRadius: 16, marginBottom: 10, maxWidth: '80%' }}>
-                                                    <Text style={{ color: m.senderId === 'me' ? '#FFF' : colors.text }}>{m.text}</Text>
-                                                </View>
-                                            ))
+                                            clanChatMessages[activeCircle.id].map((m, idx) => {
+                                                const isMe = m.senderId === 'me';
+                                                const time = m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                                                return (
+                                                    <View key={m.id} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', marginBottom: 12, maxWidth: '78%' }}>
+                                                        <View style={{
+                                                            backgroundColor: isMe ? colors.primary : (isDarkMode ? '#2A2A3A' : '#EFEFEF'),
+                                                            paddingHorizontal: 16,
+                                                            paddingVertical: 10,
+                                                            borderRadius: 20,
+                                                            borderBottomRightRadius: isMe ? 4 : 20,
+                                                            borderBottomLeftRadius: isMe ? 20 : 4,
+                                                            shadowColor: '#000',
+                                                            shadowOffset: { width: 0, height: 2 },
+                                                            shadowOpacity: 0.10,
+                                                            shadowRadius: 6,
+                                                            elevation: 3,
+                                                        }}>
+                                                            <Text style={{ color: isMe ? '#FFF' : colors.text, fontSize: 14, lineHeight: 20 }}>{m.text}</Text>
+                                                        </View>
+                                                        <Text style={{ color: colors.subtext, fontSize: 10, marginTop: 4, textAlign: isMe ? 'right' : 'left', paddingHorizontal: 4 }}>{time}</Text>
+                                                    </View>
+                                                );
+                                            })
                                         ) : (
-                                            <View style={{ alignItems: 'center', justifyContent: 'center', marginTop: 40 }}>
-                                                <Text style={{ color: colors.subtext, fontSize: 14 }}>Nenhuma mensagem ainda.</Text>
-                                                <Text style={{ color: colors.subtext, fontSize: 14 }}>Diga olá para o clã!</Text>
+                                            <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
+                                                <View style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                                                    <Ionicons name="chatbubbles-outline" size={34} color={colors.primary} />
+                                                </View>
+                                                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginBottom: 6 }}>Quebrem o gelo!</Text>
+                                                <Text style={{ color: colors.subtext, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>Seja o primeiro a falar no chat do clã ⚔️</Text>
                                             </View>
                                         )}
                                     </ScrollView>
-                                    <View style={{ padding: 20, flexDirection: 'row', gap: 10 }}>
-                                        <TextInput 
-                                            style={[styles.modalInput, { flex: 1, color: colors.text, backgroundColor: isDarkMode ? '#1A1A1A' : '#F5F5F5' }]} 
-                                            value={clanChatInput} 
-                                            onChangeText={setClanChatInput} 
-                                            placeholder="Digite algo..." 
-                                            placeholderTextColor={colors.subtext} 
-                                        />
-                                        <Pressable onPress={handleSendClanMessage} style={{ width: 45, height: 45, backgroundColor: colors.primary, borderRadius: 23, alignItems: 'center', justifyContent: 'center' }}>
-                                            <Ionicons name="send" size={20} color="#FFF" />
-                                        </Pressable>
+
+                                    {/* Clan Chat Input Bar */}
+                                    <View style={{
+                                        borderTopWidth: 1,
+                                        borderTopColor: isDarkMode ? '#ffffff10' : '#00000010',
+                                        backgroundColor: colors.background,
+                                    }}>
+                                        {/* Image preview */}
+                                        {clanChatMediaUri && (
+                                            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                                                <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
+                                                    <Image
+                                                        source={{ uri: clanChatMediaUri }}
+                                                        style={{ width: 80, height: 80, borderRadius: 14 }}
+                                                    />
+                                                    <Pressable
+                                                        onPress={() => setClanChatMediaUri(null)}
+                                                        style={{
+                                                            position: 'absolute', top: -6, right: -6,
+                                                            width: 22, height: 22, borderRadius: 11,
+                                                            backgroundColor: '#FF4444',
+                                                            alignItems: 'center', justifyContent: 'center',
+                                                        }}
+                                                    >
+                                                        <Ionicons name="close" size={13} color="#FFF" />
+                                                    </Pressable>
+                                                </View>
+                                            </View>
+                                        )}
+
+                                        {/* Input row */}
+                                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, paddingBottom: 20 }}>
+                                            {/* Media button */}
+                                            <Pressable
+                                                onPress={() => handlePickMedia('clan')}
+                                                style={({ pressed }) => ({
+                                                    width: 42,
+                                                    height: 42,
+                                                    borderRadius: 21,
+                                                    backgroundColor: pressed
+                                                        ? colors.primary + '30'
+                                                        : (isDarkMode ? '#1E1E2E' : '#F2F2F7'),
+                                                    borderWidth: 1,
+                                                    borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                })}
+                                            >
+                                                <Ionicons name="image-outline" size={20} color={colors.primary} />
+                                            </Pressable>
+
+                                            {/* Text input pill */}
+                                            <View style={{
+                                                flex: 1,
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                backgroundColor: isDarkMode ? '#1E1E2E' : '#F2F2F7',
+                                                borderRadius: 28,
+                                                borderWidth: 1,
+                                                borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                                paddingHorizontal: 16,
+                                                minHeight: 48,
+                                            }}>
+                                                <TextInput
+                                                    style={{ flex: 1, color: colors.text, fontSize: 15, paddingVertical: 10, outlineStyle: 'none' } as any}
+                                                    value={clanChatInput}
+                                                    onChangeText={setClanChatInput}
+                                                    placeholder="Mensagem para o clã..."
+                                                    placeholderTextColor={colors.subtext}
+                                                    multiline
+                                                    onSubmitEditing={handleSendClanMessage}
+                                                />
+                                            </View>
+
+                                            {/* Send button */}
+                                            <Pressable
+                                                onPress={handleSendClanMessage}
+                                                style={({ pressed }) => ({
+                                                    width: 48,
+                                                    height: 48,
+                                                    backgroundColor: (clanChatInput.trim() || clanChatMediaUri) ? colors.primary : (isDarkMode ? '#333' : '#DDD'),
+                                                    borderRadius: 24,
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    opacity: pressed ? 0.7 : 1,
+                                                    transform: [{ scale: pressed ? 0.92 : 1 }],
+                                                    shadowColor: colors.primary,
+                                                    shadowOffset: { width: 0, height: 4 },
+                                                    shadowOpacity: (clanChatInput.trim() || clanChatMediaUri) ? 0.4 : 0,
+                                                    shadowRadius: 8,
+                                                    elevation: (clanChatInput.trim() || clanChatMediaUri) ? 6 : 0,
+                                                })}
+                                            >
+                                                <Ionicons name="send" size={20} color={(clanChatInput.trim() || clanChatMediaUri) ? '#FFF' : colors.subtext} style={{ marginLeft: 2 }} />
+                                            </Pressable>
+                                        </View>
                                     </View>
                                 </View>
                             )}
@@ -1012,11 +1145,232 @@ export default function SocialScreen() {
                 </SafeAreaView>
             </Modal>
 
+            {/* ============================================================ */}
+            {/* PERSONAL CHAT MODAL — Redesigned                             */}
+            {/* ============================================================ */}
             <Modal visible={isChatVisible} animationType="slide">
                 <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-                    <View style={styles.header}><Pressable onPress={() => setIsChatVisible(false)}><Ionicons name="arrow-back" size={24} color={colors.text} /></Pressable><Text style={[styles.title, { color: colors.text }]}>{chatTarget?.name}</Text><View style={{ width: 24 }} /></View>
-                    <ScrollView style={{ flex: 1, padding: 20 }} ref={chatScrollRef} onContentSizeChange={() => chatScrollRef.current?.scrollToEnd()}>{chatMessages.map(m => (<View key={m.id} style={{ alignSelf: m.senderId === 'me' ? 'flex-end' : 'flex-start', backgroundColor: m.senderId === 'me' ? colors.primary : colors.accent, padding: 12, borderRadius: 16, marginBottom: 10, maxWidth: '80%' }}><Text style={{ color: m.senderId === 'me' ? '#FFF' : colors.text }}>{m.text}</Text></View>))}</ScrollView>
-                    <View style={{ padding: 20, flexDirection: 'row', gap: 10 }}><TextInput style={[styles.modalInput, { flex: 1, color: colors.text, backgroundColor: isDarkMode ? '#1A1A1A' : '#F5F5F5' }]} value={chatInput} onChangeText={setChatInput} placeholder="Digite algo..." placeholderTextColor={colors.subtext} /><Pressable onPress={handleSendMessage} style={{ width: 45, height: 45, backgroundColor: colors.primary, borderRadius: 23, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="send" size={20} color="#FFF" /></Pressable></View>
+
+                    {/* ── Header ── */}
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderBottomWidth: 1,
+                        borderBottomColor: isDarkMode ? '#ffffff10' : '#00000010',
+                        gap: 12,
+                    }}>
+                        <Pressable
+                            onPress={() => setIsChatVisible(false)}
+                            style={({ pressed }) => ({
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                                backgroundColor: pressed ? (isDarkMode ? '#ffffff15' : '#00000010') : 'transparent',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            })}
+                        >
+                            <Ionicons name="chevron-back" size={26} color={colors.text} />
+                        </Pressable>
+
+                        {/* Avatar + online dot */}
+                        <View style={{ position: 'relative' }}>
+                            <View style={{
+                                width: 42,
+                                height: 42,
+                                borderRadius: 21,
+                                backgroundColor: colors.primary + '25',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                overflow: 'hidden',
+                            }}>
+                                {chatTarget?.avatar ? (
+                                    <Image source={{ uri: chatTarget.avatar }} style={{ width: 42, height: 42, borderRadius: 21 }} />
+                                ) : (
+                                    <Ionicons name="person" size={22} color={colors.primary} />
+                                )}
+                            </View>
+                            <View style={{
+                                position: 'absolute',
+                                bottom: 1,
+                                right: 1,
+                                width: 11,
+                                height: 11,
+                                borderRadius: 6,
+                                backgroundColor: '#4ADE80',
+                                borderWidth: 2,
+                                borderColor: colors.background,
+                            }} />
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }} numberOfLines={1}>
+                                {chatTarget?.name}
+                            </Text>
+                            <Text style={{ color: '#4ADE80', fontSize: 11, fontWeight: '600' }}>online agora</Text>
+                        </View>
+
+                        <Pressable style={({ pressed }) => ({ width: 38, height: 38, borderRadius: 19, backgroundColor: pressed ? colors.primary + '20' : colors.primary + '12', alignItems: 'center', justifyContent: 'center' })}>
+                            <Ionicons name="ellipsis-horizontal" size={20} color={colors.primary} />
+                        </Pressable>
+                    </View>
+
+                    {/* ── Messages ── */}
+                    <ScrollView
+                        style={{ flex: 1 }}
+                        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}
+                        ref={chatScrollRef}
+                        onContentSizeChange={() => chatScrollRef.current?.scrollToEnd()}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {chatMessages.length === 0 && (
+                            <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
+                                <View style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                                    <Ionicons name="chatbubble-ellipses-outline" size={34} color={colors.primary} />
+                                </View>
+                                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginBottom: 6 }}>Começa a conversa!</Text>
+                                <Text style={{ color: colors.subtext, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>Diga oi para {chatTarget?.name} 👋</Text>
+                            </View>
+                        )}
+                        {chatMessages.map((m, idx) => {
+                            const isMe = m.senderId === 'me';
+                            const time = m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                            const prevMsg = chatMessages[idx - 1];
+                            const showDateSep = idx === 0 || (prevMsg && new Date(m.timestamp).toDateString() !== new Date(prevMsg.timestamp).toDateString());
+                            return (
+                                <View key={m.id}>
+                                    {showDateSep && (
+                                        <View style={{ alignItems: 'center', marginVertical: 16 }}>
+                                            <View style={{ backgroundColor: isDarkMode ? '#ffffff12' : '#00000010', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 }}>
+                                                <Text style={{ color: colors.subtext, fontSize: 11, fontWeight: '600' }}>
+                                                    {new Date(m.timestamp).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    )}
+                                    <View style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', marginBottom: 12, maxWidth: '78%' }}>
+                                        <View style={{
+                                            backgroundColor: isMe ? colors.primary : (isDarkMode ? '#2A2A3A' : '#EFEFEF'),
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 10,
+                                            borderRadius: 22,
+                                            borderBottomRightRadius: isMe ? 4 : 22,
+                                            borderBottomLeftRadius: isMe ? 22 : 4,
+                                            shadowColor: isMe ? colors.primary : '#000',
+                                            shadowOffset: { width: 0, height: 2 },
+                                            shadowOpacity: isMe ? 0.25 : 0.08,
+                                            shadowRadius: 8,
+                                            elevation: 3,
+                                        }}>
+                                            <Text style={{ color: isMe ? '#FFF' : colors.text, fontSize: 15, lineHeight: 22 }}>{m.text}</Text>
+                                        </View>
+                                        <Text style={{ color: colors.subtext, fontSize: 10, marginTop: 4, textAlign: isMe ? 'right' : 'left', paddingHorizontal: 4 }}>{time}</Text>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </ScrollView>
+
+                    {/* ── Input Bar ── */}
+                    <View style={{
+                        flexDirection: 'column',
+                        borderTopWidth: 1,
+                        borderTopColor: isDarkMode ? '#ffffff10' : '#00000010',
+                        backgroundColor: colors.background,
+                    }}>
+                        {/* Image preview strip */}
+                        {chatMediaUri && (
+                            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                                <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
+                                    <Image
+                                        source={{ uri: chatMediaUri }}
+                                        style={{ width: 80, height: 80, borderRadius: 14 }}
+                                    />
+                                    <Pressable
+                                        onPress={() => setChatMediaUri(null)}
+                                        style={{
+                                            position: 'absolute', top: -6, right: -6,
+                                            width: 22, height: 22, borderRadius: 11,
+                                            backgroundColor: '#FF4444',
+                                            alignItems: 'center', justifyContent: 'center',
+                                        }}
+                                    >
+                                        <Ionicons name="close" size={13} color="#FFF" />
+                                    </Pressable>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Input row */}
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12 }}>
+                            {/* Media button */}
+                            <Pressable
+                                onPress={() => handlePickMedia('chat')}
+                                style={({ pressed }) => ({
+                                    width: 42,
+                                    height: 42,
+                                    borderRadius: 21,
+                                    backgroundColor: pressed
+                                        ? colors.primary + '30'
+                                        : (isDarkMode ? '#1E1E2E' : '#F2F2F7'),
+                                    borderWidth: 1,
+                                    borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                })}
+                            >
+                                <Ionicons name="image-outline" size={20} color={colors.primary} />
+                            </Pressable>
+
+                            {/* Text input pill */}
+                            <View style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: isDarkMode ? '#1E1E2E' : '#F2F2F7',
+                                borderRadius: 28,
+                                borderWidth: 1,
+                                borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                paddingHorizontal: 16,
+                                minHeight: 48,
+                            }}>
+                                <TextInput
+                                    style={{ flex: 1, color: colors.text, fontSize: 15, paddingVertical: 10, outlineStyle: 'none' } as any}
+                                    value={chatInput}
+                                    onChangeText={setChatInput}
+                                    placeholder={`Mensagem para ${chatTarget?.name ?? ''}...`}
+                                    placeholderTextColor={colors.subtext}
+                                    multiline
+                                    onSubmitEditing={handleSendMessage}
+                                />
+                            </View>
+
+                            {/* Send button */}
+                            <Pressable
+                                onPress={handleSendMessage}
+                                style={({ pressed }) => ({
+                                    width: 48,
+                                    height: 48,
+                                    backgroundColor: (chatInput.trim() || chatMediaUri) ? colors.primary : (isDarkMode ? '#333' : '#DDD'),
+                                    borderRadius: 24,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    opacity: pressed ? 0.7 : 1,
+                                    transform: [{ scale: pressed ? 0.92 : 1 }],
+                                    shadowColor: colors.primary,
+                                    shadowOffset: { width: 0, height: 4 },
+                                    shadowOpacity: (chatInput.trim() || chatMediaUri) ? 0.45 : 0,
+                                    shadowRadius: 10,
+                                    elevation: (chatInput.trim() || chatMediaUri) ? 6 : 0,
+                                })}
+                            >
+                                <Ionicons name="send" size={20} color={(chatInput.trim() || chatMediaUri) ? '#FFF' : colors.subtext} style={{ marginLeft: 2 }} />
+                            </Pressable>
+                        </View>
+                    </View>
+
                 </SafeAreaView>
             </Modal>
         </SafeAreaView>

@@ -557,6 +557,33 @@ export const AuthService = {
         }
     },
 
+    uploadChatImage: async (senderId: string, uri: string): Promise<string | null> => {
+        try {
+            const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+            const arrayBuffer = decode(base64);
+            const fileExt = uri.split('.').pop() || 'jpg';
+            const fileName = `chat_${senderId}_${Date.now()}.${fileExt}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(fileName, arrayBuffer, {
+                    contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
+                    upsert: false
+                });
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(fileName);
+
+            return publicUrl;
+        } catch (error: any) {
+            console.error("Erro ao enviar imagem do chat:", error);
+            return null;
+        }
+    },
+
     sendMessageCloud: async (senderId: string, recipientId: string, text: string) => {
         if (recipientId.startsWith('bot-') || senderId.startsWith('bot-')) {
             const chatKey = [senderId, recipientId].sort().join('_');

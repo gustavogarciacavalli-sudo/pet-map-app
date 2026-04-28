@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal, TextInput } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -174,7 +175,7 @@ export default function MapScreen() {
 
     const [selectedMember, setSelectedMember] = useState<any>(null);
     const [showMemberDetail, setShowMemberDetail] = useState(false);
-    const [activeCircle, setActiveCircle] = useState('Principal');
+    const [activeCircle, setActiveCircle] = useState('Geral');
     const [userCircles, setUserCircles] = useState<any[]>([]);
     const [showCircleSelector, setShowCircleSelector] = useState(false);
     const [activeCircleMembers, setActiveCircleMembers] = useState<string[]>([]);
@@ -228,6 +229,24 @@ export default function MapScreen() {
     const [isOtherTyping, setIsOtherTyping] = useState(false);
     const typingSubscription = useRef<any>(null);
     const typingTimeout = useRef<any>(null);
+    const [chatMediaUri, setChatMediaUri] = useState<string | null>(null);
+    const [fullScreenImageUri, setFullScreenImageUri] = useState<string | null>(null);
+
+    const handlePickChatMedia = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão necessária', 'Permita o acesso à galeria para enviar fotos.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]?.uri) {
+            setChatMediaUri(result.assets[0].uri);
+        }
+    };
 
     const handleSocialRadarScan = async () => {
         setShowSocialRadar(true);
@@ -691,7 +710,7 @@ export default function MapScreen() {
 
         // Adicionar outros usuários remotos
         Object.values(remoteUsers).forEach(u => {
-            if (activeCircle !== 'Principal' && !activeCircleMembers.includes(u.id)) return;
+            if (activeCircle !== 'Geral' && !activeCircleMembers.includes(u.id)) return;
             if (u.location) {
                 players.push({
                     id: u.id,
@@ -900,11 +919,26 @@ export default function MapScreen() {
         }, 2000);
     };
 
-    const handleSendMessage = async () => {
-        if (!chatInput.trim() || !chatTarget) return;
+    const handleSendMessage = async (directText?: string) => {
+        const txt = (directText || chatInput).trim();
+        const hasImage = !!chatMediaUri;
+        if (!txt && !hasImage) return;
+        if (!chatTarget) return;
         const user = await getCurrentUserLocal();
-        if (user) {
-            await AuthService.sendMessageCloud(user.id, chatTarget.id, chatInput.trim());
+        if (!user) return;
+
+        // Upload image first if present
+        if (hasImage && chatMediaUri) {
+            const imageUrl = await AuthService.uploadChatImage(user.id, chatMediaUri);
+            if (imageUrl) {
+                await AuthService.sendMessageCloud(user.id, chatTarget.id, `[IMG]${imageUrl}`);
+            }
+            setChatMediaUri(null);
+        }
+
+        // Send text if present
+        if (txt) {
+            await AuthService.sendMessageCloud(user.id, chatTarget.id, txt);
             setChatInput('');
         }
     };
@@ -1331,7 +1365,10 @@ export default function MapScreen() {
                                 </View>
                             </Pressable>
 
-                            {circleMembers.map(m => (
+                            {circleMembers.filter(m => {
+                                if (activeCircle === 'Geral') return true;
+                                return activeCircleMembers.includes(m.id);
+                            }).map(m => (
                                 <Pressable key={m.id} style={styles.memberRow} onPress={() => handleMemberTap(m)}>
                                     <View style={[styles.memberAvatar, { borderColor: m.online ? '#4ADE80' : '#333', overflow: 'hidden' }]}>
                                         {m.avatar ? (
@@ -1556,12 +1593,12 @@ export default function MapScreen() {
                                     <Pressable 
                                         style={({ pressed }) => [
                                             styles.dropdownItem,
-                                            { backgroundColor: activeCircle === 'Principal' ? colors.accent : (pressed ? colors.border : 'transparent') }
+                                            { backgroundColor: activeCircle === 'Geral' ? colors.accent : (pressed ? colors.border : 'transparent') }
                                         ]}
-                                        onPress={() => handleCircleSelect('Principal', [])}
+                                        onPress={() => handleCircleSelect('Geral', [])}
                                     >
-                                        <Ionicons name="home" size={18} color={activeCircle === 'Principal' ? colors.primary : colors.subtext} />
-                                        <Text style={[styles.dropdownText, { color: activeCircle === 'Principal' ? colors.text : colors.subtext }]}>Principal</Text>
+                                        <Ionicons name="globe-outline" size={18} color={activeCircle === 'Geral' ? colors.primary : colors.subtext} />
+                                        <Text style={[styles.dropdownText, { color: activeCircle === 'Geral' ? colors.text : colors.subtext }]}>Geral</Text>
                                     </Pressable>
 
                                     {userCircles.map((circle: any) => {
@@ -2021,25 +2058,38 @@ export default function MapScreen() {
                     >
                         {chatMessages.map((msg) => {
                             const isMe = msg.senderId === 'me';
+                            const isImage = msg.text?.startsWith('[IMG]');
+                            const imageUrl = isImage ? msg.text.replace('[IMG]', '') : null;
                             return (
                                 <View key={msg.id} style={{ 
                                     alignSelf: isMe ? 'flex-end' : 'flex-start', 
-                                    backgroundColor: isMe ? colors.primary : (isDarkMode ? '#2C2C31' : '#FFF'), 
-                                    paddingHorizontal: 16, 
-                                    paddingVertical: 10, 
+                                    backgroundColor: isImage ? 'transparent' : (isMe ? colors.primary : (isDarkMode ? '#2C2C31' : '#FFF')), 
+                                    paddingHorizontal: isImage ? 0 : 16, 
+                                    paddingVertical: isImage ? 0 : 10, 
                                     borderRadius: 20, 
                                     borderBottomRightRadius: isMe ? 4 : 20,
                                     borderBottomLeftRadius: isMe ? 20 : 4,
                                     marginBottom: 12,
                                     maxWidth: '80%',
-                                    elevation: 2,
+                                    overflow: 'hidden',
+                                    elevation: isImage ? 0 : 2,
                                     shadowColor: '#000',
                                     shadowOffset: { width: 0, height: 2 },
                                     shadowOpacity: 0.1,
                                     shadowRadius: 4
                                 }}>
-                                    <Text style={{ color: isMe ? '#FFF' : colors.text, fontSize: 15 }}>{msg.text}</Text>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 }}>
+                                    {isImage && imageUrl ? (
+                                        <Pressable onPress={() => setFullScreenImageUri(imageUrl)}>
+                                            <Image 
+                                                source={{ uri: imageUrl }} 
+                                                style={{ width: 220, height: 220, borderRadius: 18 }} 
+                                                resizeMode="cover"
+                                            />
+                                        </Pressable>
+                                    ) : (
+                                        <Text style={{ color: isMe ? '#FFF' : colors.text, fontSize: 15 }}>{msg.text}</Text>
+                                    )}
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4, paddingHorizontal: isImage ? 4 : 0 }}>
                                         <Text style={{ color: isMe ? 'rgba(255,255,255,0.6)' : colors.subtext, fontSize: 10 }}>
                                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </Text>
@@ -2051,12 +2101,12 @@ export default function MapScreen() {
                         {isOtherTyping && <TypingIndicator />}
                     </ScrollView>
 
-                    <View style={{ padding: 16, backgroundColor: isDarkMode ? '#1C1C21' : '#FFF', borderTopWidth: 1, borderTopColor: isDarkMode ? '#333' : '#EEE' }}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                    <View style={{ backgroundColor: isDarkMode ? '#1C1C21' : '#FFF', borderTopWidth: 1, borderTopColor: isDarkMode ? '#333' : '#EEE' }}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, paddingTop: 12 }}>
                             {QUICK_MESSAGES.map(q => (
                                 <Pressable 
                                     key={q.id} 
-                                    onPress={() => { setChatInput(q.text); handleSendMessage(); }}
+                                    onPress={() => handleSendMessage(q.text)}
                                     style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDarkMode ? '#2C2C31' : '#F0F0F0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8, gap: 6 }}
                                 >
                                     <Ionicons name={q.icon as any} size={14} color={q.color} />
@@ -2065,18 +2115,48 @@ export default function MapScreen() {
                             ))}
                         </ScrollView>
 
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        {/* Image preview */}
+                        {chatMediaUri && (
+                            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                                <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
+                                    <Image source={{ uri: chatMediaUri }} style={{ width: 80, height: 80, borderRadius: 14 }} />
+                                    <Pressable
+                                        onPress={() => setChatMediaUri(null)}
+                                        style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: '#FF4444', alignItems: 'center', justifyContent: 'center' }}
+                                    >
+                                        <Ionicons name="close" size={13} color="#FFF" />
+                                    </Pressable>
+                                </View>
+                            </View>
+                        )}
+
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, paddingBottom: 16 }}>
+                            {/* Media button */}
+                            <Pressable
+                                onPress={handlePickChatMedia}
+                                style={({ pressed }) => ({
+                                    width: 42, height: 42, borderRadius: 21,
+                                    backgroundColor: pressed ? colors.primary + '30' : (isDarkMode ? '#2C2C31' : '#F0F0F0'),
+                                    borderWidth: 1, borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                    alignItems: 'center', justifyContent: 'center',
+                                })}
+                            >
+                                <Ionicons name="image-outline" size={20} color={colors.primary} />
+                            </Pressable>
+
+                            {/* Text input pill */}
                             <TextInput 
                                 style={{ 
                                     flex: 1, 
                                     backgroundColor: isDarkMode ? '#2C2C31' : '#F0F0F0', 
-                                    borderRadius: 20, 
+                                    borderRadius: 24, 
                                     paddingHorizontal: 20, 
-                                    paddingVertical: 12, 
+                                    paddingVertical: 10, 
                                     color: colors.text,
-                                    maxHeight: 100
+                                    maxHeight: 100,
+                                    fontSize: 15
                                 }}
-                                placeholder="Mensagem..."
+                                placeholder={`Mensagem para ${chatTarget?.name ?? ''}...`}
                                 placeholderTextColor={colors.subtext}
                                 value={chatInput}
                                 onChangeText={(txt) => {
@@ -2085,15 +2165,40 @@ export default function MapScreen() {
                                 }}
                                 multiline
                             />
+
+                            {/* Send button */}
                             <Pressable 
-                                onPress={handleSendMessage}
-                                style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 4 }}
+                                onPress={() => handleSendMessage()}
+                                style={({ pressed }) => ({
+                                    width: 48, height: 48, borderRadius: 24,
+                                    backgroundColor: (chatInput.trim() || chatMediaUri) ? colors.primary : (isDarkMode ? '#333' : '#DDD'),
+                                    alignItems: 'center', justifyContent: 'center',
+                                    opacity: pressed ? 0.7 : 1,
+                                    transform: [{ scale: pressed ? 0.92 : 1 }],
+                                    shadowColor: colors.primary,
+                                    shadowOffset: { width: 0, height: 4 },
+                                    shadowOpacity: (chatInput.trim() || chatMediaUri) ? 0.45 : 0,
+                                    shadowRadius: 10,
+                                    elevation: (chatInput.trim() || chatMediaUri) ? 6 : 0,
+                                })}
                             >
-                                <Ionicons name="send" size={20} color="#FFF" />
+                                <Ionicons name="send" size={20} color={(chatInput.trim() || chatMediaUri) ? '#FFF' : colors.subtext} style={{ marginLeft: 2 }} />
                             </Pressable>
                         </View>
                     </View>
                 </SafeAreaView>
+            </Modal>
+
+            {/* Modal FullScreen Image */}
+            <Modal visible={!!fullScreenImageUri} transparent={true} animationType="fade" onRequestClose={() => setFullScreenImageUri(null)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' }}>
+                    <Pressable style={{ position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20 }} onPress={() => setFullScreenImageUri(null)}>
+                        <Ionicons name="close" size={28} color="#FFF" />
+                    </Pressable>
+                    {fullScreenImageUri && (
+                        <Image source={{ uri: fullScreenImageUri }} style={{ width: Dimensions.get('window').width, height: Dimensions.get('window').height * 0.8 }} resizeMode="contain" />
+                    )}
+                </View>
             </Modal>
         </View>
     );

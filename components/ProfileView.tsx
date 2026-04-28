@@ -276,8 +276,7 @@ export function ProfileView() {
                 showToast({ 
                     message: "Modo Fantasma Ativado!", 
                     type: 'success', 
-                    icon: 'eye-off-outline',
-                    image: require('../assets/images/ghost-icon.png')
+                    icon: 'eye-off-outline'
                 });
             } else {
                 showToast({ 

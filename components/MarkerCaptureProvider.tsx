@@ -109,7 +109,7 @@ export const MarkerCaptureProvider: React.FC<{ children: React.ReactNode }> = ({
             processingIds.current.delete(item.id);
           }
         }
-      }, 800);
+      }, 1500);
     });
   }, [captureQueue]);
 

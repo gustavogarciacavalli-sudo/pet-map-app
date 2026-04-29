@@ -83,7 +83,7 @@ export const GameMarker: React.FC<GameMarkerProps> = (props) => {
             anchor={{ x: 0.5, y: 1 }}
             icon={icon as any}
         >
-            {Platform.OS !== 'android' && <GameMarkerVisual {...props} />}
+            {(Platform.OS !== 'android' || !capturedUri) && <GameMarkerVisual {...props} />}
         </MapMarkerLibre>
     );
 };

@@ -65,7 +65,7 @@ export const MapViewLibre = React.forwardRef<MapView, MapViewLibreProps>(({ regi
                 ref={ref}
                 provider={PROVIDER_GOOGLE}
                 style={styles.map}
-                initialRegion={region}
+                region={region}
                 onRegionChangeComplete={onRegionChangeComplete}
                 onPress={(e) => onPress && onPress([e.nativeEvent.coordinate.longitude, e.nativeEvent.coordinate.latitude])}
                 customMapStyle={isDarkMode ? gameDarkStyle : gameLightStyle}

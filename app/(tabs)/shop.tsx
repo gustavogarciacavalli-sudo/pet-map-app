@@ -125,7 +125,12 @@ export default function ShopScreen() {
 
     // Modals Custom
     const [confirmModal, setConfirmModal] = useState<{ visible: boolean; item: any | null }>({ visible: false, item: null });
-    const [successModal, setSuccessModal] = useState<{ visible: boolean; item: any | null; extraMsg: string }>({ visible: false, item: null, extraMsg: '' });
+    const [successModal, setSuccessModal] = useState<{ visible: boolean; item: any; extraMsg: string; title?: string }>({ 
+        visible: false, 
+        item: null, 
+        extraMsg: '',
+        title: 'Sucesso!'
+    });
 
     const scrollY = useRef(new Animated.Value(0)).current;
     const tabTranslateY = useRef(new Animated.Value(0)).current;
@@ -251,9 +256,19 @@ export default function ShopScreen() {
     const handleEquip = async (item: any) => {
         if (item.tab === 'accessory') {
             await updatePetAccessoryLocal(item.id);
-            Alert.alert('Equipado!', `${item.name} foi colocado no seu pet.`);
+            setSuccessModal({
+                visible: true,
+                item,
+                title: 'Equipado!',
+                extraMsg: `${item.name} foi colocado no seu pet.`
+            });
         } else {
-            Alert.alert('Estilo Selecionado!', `${item.name} agora faz parte do seu visual.`);
+            setSuccessModal({
+                visible: true,
+                item,
+                title: 'Estilo Selecionado!',
+                extraMsg: `${item.name} agora faz parte do seu visual.`
+            });
             // Futuramente: updatePlayerAccessoryLocal(item.id);
         }
     };
@@ -408,32 +423,39 @@ export default function ShopScreen() {
             </ScrollView>
 
             {/* Custom Modals */}
-            <Modal visible={confirmModal.visible} transparent animationType="fade">
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
+            <Modal 
+                visible={confirmModal.visible} 
+                transparent 
+                animationType="fade"
+                onRequestClose={() => setConfirmModal({ visible: false, item: null })}
+            >
+                <Pressable style={styles.modalOverlay} onPress={() => setConfirmModal({ visible: false, item: null })}>
+                    <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
                         <View style={styles.modalIconContainer}>
-                            {confirmModal.item && renderItemIcon(confirmModal.item, 48, colors.primary)}
+                            <Ionicons name="cart-outline" size={48} color={colors.primary} />
                         </View>
                         <Text style={[styles.modalTitle, { color: colors.text }]}>Confirmar Compra</Text>
                         <Text style={[styles.modalSub, { color: colors.subtext }]}>
-                            Deseja adquirir <Text style={{ color: colors.text, fontWeight: '800' }}>{confirmModal.item?.name}</Text>?
+                            Deseja comprar <Text style={{ color: colors.text, fontWeight: '800' }}>{confirmModal.item?.name}</Text>?
                         </Text>
                         
                         <View style={styles.priceRowLarge}>
                             <Ionicons 
-                                name={confirmModal.item?.currency === 'gems' ? 'diamond' : 'wallet'} 
-                                size={20} 
-                                color={confirmModal.item?.currency === 'gems' ? '#60A5FA' : colors.primary} 
+                                name={confirmModal.item?.currency === 'coins' ? "wallet" : "diamond"} 
+                                size={28} 
+                                color={confirmModal.item?.currency === 'coins' ? colors.primary : '#60A5FA'} 
                             />
-                            <Text style={[styles.priceTextLarge, { color: colors.text }]}>{confirmModal.item?.price}</Text>
+                            <Text style={[styles.priceTextLarge, { color: '#FFF' }]}>
+                                {confirmModal.item?.price}
+                            </Text>
                         </View>
 
                         <View style={styles.modalActionRow}>
                             <Pressable 
-                                style={[styles.modalBtn, { backgroundColor: '#2C2C31' }]} 
+                                style={[styles.modalBtn, { backgroundColor: 'rgba(255,255,255,0.05)' }]} 
                                 onPress={() => setConfirmModal({ visible: false, item: null })}
                             >
-                                <Text style={{ color: '#AAA', fontWeight: '700' }}>Voltar</Text>
+                                <Text style={{ color: colors.subtext, fontWeight: '700' }}>Cancelar</Text>
                             </Pressable>
                             <Pressable 
                                 style={[styles.modalBtn, { backgroundColor: colors.primary }]} 
@@ -442,29 +464,39 @@ export default function ShopScreen() {
                                 <Text style={{ color: '#FFF', fontWeight: '800' }}>Confirmar</Text>
                             </Pressable>
                         </View>
-                    </View>
-                </View>
+                    </Pressable>
+                </Pressable>
             </Modal>
 
-            <Modal visible={successModal.visible} transparent animationType="fade">
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={[styles.modalIconContainer, { backgroundColor: colors.primary + '20' }]}>
+            <Modal 
+                visible={successModal.visible} 
+                transparent 
+                animationType="fade"
+                onRequestClose={() => setSuccessModal({ visible: false, item: null, extraMsg: '', title: 'Sucesso!' })}
+            >
+                <Pressable style={styles.modalOverlay} onPress={() => setSuccessModal({ visible: false, item: null, extraMsg: '', title: 'Sucesso!' })}>
+                    <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
+                        <View style={[styles.modalIconContainer, { backgroundColor: colors.primary + '20', position: 'relative' }]}>
                             <Ionicons name="sparkles" size={48} color={colors.primary} />
+                            {successModal.item && (
+                                <View style={{ position: 'absolute', bottom: -5, right: -5, backgroundColor: '#1C1C21', borderRadius: 18, padding: 6, borderWidth: 2, borderColor: colors.primary }}>
+                                    {renderItemIcon(successModal.item, 24, colors.primary)}
+                                </View>
+                            )}
                         </View>
-                        <Text style={[styles.modalTitle, { color: colors.text }]}>Sucesso!</Text>
+                        <Text style={[styles.modalTitle, { color: colors.text }]}>{successModal.title || 'Sucesso!'}</Text>
                         <Text style={[styles.modalSub, { color: colors.subtext, textAlign: 'center' }]}>
                             {successModal.extraMsg}
                         </Text>
                         
                         <Pressable 
                             style={[styles.modalBtn, { backgroundColor: colors.primary, width: '100%', marginTop: 10 }]} 
-                            onPress={() => setSuccessModal({ visible: false, item: null, extraMsg: '' })}
+                            onPress={() => setSuccessModal({ visible: false, item: null, extraMsg: '', title: 'Sucesso!' })}
                         >
                             <Text style={{ color: '#FFF', fontWeight: '800' }}>Excelente!</Text>
                         </Pressable>
-                    </View>
-                </View>
+                    </Pressable>
+                </Pressable>
             </Modal>
         </View>
     );

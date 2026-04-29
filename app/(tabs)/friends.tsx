@@ -1,9 +1,10 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Battery from 'expo-battery';
+import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PetPreview } from '../../components/PetPreview';
 import { ProfileView } from '../../components/ProfileView';
@@ -20,6 +21,7 @@ import { ChatMessage, FriendRequest } from '../../types/social';
 import { AuthService } from '../../services/AuthService';
 import { supabase } from '../../services/supabaseConfig';
 import { NearbyWeb } from '../../components/NearbyWeb';
+import { Leaderboard } from '../../components/Leaderboard';
 
 export default function SocialScreen() {
     const { colors, isDarkMode } = useTheme();
@@ -27,7 +29,7 @@ export default function SocialScreen() {
     const { tab } = useLocalSearchParams<{ tab?: string }>();
     const [activeTopTab, setActiveTopTab] = useState<'perfil' | 'social' | 'clas'>(tab === 'perfil' ? 'perfil' : 'social');
     const [activeSocialSubTab, setActiveSocialSubTab] = useState<'recomendados' | 'inbox'>('recomendados');
-    const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar'>('meus');
+    const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar' | 'ranking'>('meus');
 
     // Estados para Clãs
     const [circles, setCircles] = useState<any[]>([]);
@@ -58,6 +60,7 @@ export default function SocialScreen() {
     const [chatInput, setChatInput] = useState('');
     const chatScrollRef = useRef<ScrollView>(null);
     const chatSubscription = useRef<any>(null);
+    const [chatMediaUri, setChatMediaUri] = useState<string | null>(null);
 
     // Estados para Preview
     const [isAvatarZoomVisible, setIsAvatarZoomVisible] = useState(false);
@@ -286,6 +289,22 @@ export default function SocialScreen() {
         if (user) {
             await AuthService.sendMessageCloud(user.id, chatTarget.id, txt);
             // O Realtime atualizará a lista automaticamente via subscribeToMessages
+        }
+    };
+
+    const handlePickMedia = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão necessária', 'Permita o acesso à galeria para enviar fotos.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]?.uri) {
+            setChatMediaUri(result.assets[0].uri);
         }
     };
 
@@ -603,6 +622,9 @@ export default function SocialScreen() {
                         <Pressable onPress={() => setActiveClansSubTab('buscar')} style={[styles.subTabBtn, activeClansSubTab === 'buscar' && { backgroundColor: colors.accent }]}>
                             <Text style={[styles.subTabText, { color: activeClansSubTab === 'buscar' ? colors.primary : colors.subtext }]}>Buscar</Text>
                         </Pressable>
+                        <Pressable onPress={() => setActiveClansSubTab('ranking')} style={[styles.subTabBtn, activeClansSubTab === 'ranking' && { backgroundColor: colors.accent }]}>
+                            <Text style={[styles.subTabText, { color: activeClansSubTab === 'ranking' ? colors.primary : colors.subtext }]}>Ranking</Text>
+                        </Pressable>
                     </View>
 
                     {/* Search e Add Button */}
@@ -622,57 +644,63 @@ export default function SocialScreen() {
                         </Pressable>
                     </View>
 
-                    {/* Lista de círculos */}
-                    {circles
-                        .filter((c: any) => {
-                            const isMember = c.members.includes(user?.id);
-                            if (activeClansSubTab === 'meus') return isMember;
-                            return !isMember; 
-                        })
-                        .filter(c => c.name.toLowerCase().includes(clansSearch.toLowerCase()))
-                        .map(circle => (
-                            <Pressable
-                                key={circle.id}
-                                style={[styles.circleRow, { borderBottomColor: colors.border }]}
-                                onPress={() => {
-                                    setSelectedCircleId(circle.id);
-                                    const isMember = circle.members.includes(user?.id);
-                                    if (isMember || circle.isPublic) {
-                                        setIsDetailModalVisible(true);
-                                    } else {
-                                        setIsPassModalVisible(true);
-                                    }
-                                }}
-                            >
-                                <View style={styles.circleAvatars}>
-                                    {circle.members.slice(0, 3).map((m: any, i: number) => {
-                                        if (!m) return null;
-                                        return (
-                                            <View key={`${m.id || i}_${i}`} style={[styles.stackedAvatar, {
-                                                marginLeft: i > 0 ? -12 : 0,
-                                                zIndex: 3 - i,
-                                                borderColor: colors.card,
-                                                backgroundColor: isDarkMode ? '#2A2A36' : '#F0EDFA',
-                                            }]}>
-                                                {m.avatar || m.species ? (
-                                                    <PetPreview species={m.species || 'bunny'} size={40} customImageUri={m.avatar} />
-                                                ) : (
-                                                    <Text style={{ fontSize: 14, fontWeight: '800', color: colors.primary }}>{(m.name || '?')[0]}</Text>
-                                                )}
-                                            </View>
-                                        );
-                                    })}
-                                    {circle.members.length > 3 && (
-                                        <View style={[styles.stackedAvatar, styles.countBadge, { marginLeft: -12, backgroundColor: colors.primary }]}>
-                                            <Text style={styles.countBadgeText}>+{String(circle.members.length - 3)}</Text>
+                    {activeClansSubTab === 'ranking' ? (
+                        <Leaderboard />
+                    ) : (
+                        <>
+                            {/* Lista de círculos */}
+                            {circles
+                                .filter((c: any) => {
+                                    const isMember = c.members.includes(user?.id);
+                                    if (activeClansSubTab === 'meus') return isMember;
+                                    return !isMember; 
+                                })
+                                .filter(c => c.name.toLowerCase().includes(clansSearch.toLowerCase()))
+                                .map(circle => (
+                                    <Pressable
+                                        key={circle.id}
+                                        style={[styles.circleRow, { borderBottomColor: colors.border }]}
+                                        onPress={() => {
+                                            setSelectedCircleId(circle.id);
+                                            const isMember = circle.members.includes(user?.id);
+                                            if (isMember || circle.isPublic) {
+                                                setIsDetailModalVisible(true);
+                                            } else {
+                                                setIsPassModalVisible(true);
+                                            }
+                                        }}
+                                    >
+                                        <View style={styles.circleAvatars}>
+                                            {circle.members.slice(0, 3).map((m: any, i: number) => {
+                                                if (!m) return null;
+                                                return (
+                                                    <View key={`${m.id || i}_${i}`} style={[styles.stackedAvatar, {
+                                                        marginLeft: i > 0 ? -12 : 0,
+                                                        zIndex: 3 - i,
+                                                        borderColor: colors.card,
+                                                        backgroundColor: isDarkMode ? '#2A2A36' : '#F0EDFA',
+                                                    }]}>
+                                                        {m.avatar || m.species ? (
+                                                            <PetPreview species={m.species || 'bunny'} size={40} customImageUri={m.avatar} />
+                                                        ) : (
+                                                            <Text style={{ fontSize: 14, fontWeight: '800', color: colors.primary }}>{(m.name || '?')[0]}</Text>
+                                                        )}
+                                                    </View>
+                                                );
+                                            })}
+                                            {circle.members.length > 3 && (
+                                                <View style={[styles.stackedAvatar, styles.countBadge, { marginLeft: -12, backgroundColor: colors.primary }]}>
+                                                    <Text style={styles.countBadgeText}>+{String(circle.members.length - 3)}</Text>
+                                                </View>
+                                            )}
                                         </View>
-                                    )}
-                                </View>
-                                <Text style={[styles.circleName, { color: colors.text }]}>{circle.name}</Text>
-                                {!circle.isPublic && <Ionicons name="lock-closed-outline" size={14} color={colors.subtext} style={{ marginRight: 4 }} />}
-                                <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
-                            </Pressable>
-                        ))}
+                                        <Text style={[styles.circleName, { color: colors.text }]}>{circle.name}</Text>
+                                        {!circle.isPublic && <Ionicons name="lock-closed-outline" size={14} color={colors.subtext} style={{ marginRight: 4 }} />}
+                                        <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
+                                    </Pressable>
+                                ))}
+                        </>
+                    )}
 
                     <View style={{ height: 20 }} />
 
@@ -873,31 +901,100 @@ export default function SocialScreen() {
                     </ScrollView>
 
                     {/* Input Bar */}
-                    <View style={{ paddingHorizontal: 14, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                        <TextInput
-                            style={{
+                    <View style={{
+                        borderTopWidth: 1,
+                        borderTopColor: isDarkMode ? '#ffffff10' : '#00000010',
+                        backgroundColor: colors.background,
+                    }}>
+                        {/* Image preview strip */}
+                        {chatMediaUri && (
+                            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                                <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
+                                    <Image
+                                        source={{ uri: chatMediaUri }}
+                                        style={{ width: 80, height: 80, borderRadius: 14 }}
+                                    />
+                                    <Pressable
+                                        onPress={() => setChatMediaUri(null)}
+                                        style={{
+                                            position: 'absolute', top: -6, right: -6,
+                                            width: 22, height: 22, borderRadius: 11,
+                                            backgroundColor: '#FF4444',
+                                            alignItems: 'center', justifyContent: 'center',
+                                        }}
+                                    >
+                                        <Ionicons name="close" size={13} color="#FFF" />
+                                    </Pressable>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Input row */}
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, paddingBottom: 16 }}>
+                            {/* Media button */}
+                            <Pressable
+                                onPress={handlePickMedia}
+                                style={({ pressed }) => ({
+                                    width: 42,
+                                    height: 42,
+                                    borderRadius: 21,
+                                    backgroundColor: pressed
+                                        ? colors.primary + '30'
+                                        : (isDarkMode ? '#1E1E2E' : '#F2F2F7'),
+                                    borderWidth: 1,
+                                    borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                })}
+                            >
+                                <Ionicons name="image-outline" size={20} color={colors.primary} />
+                            </Pressable>
+
+                            {/* Text input pill */}
+                            <View style={{
                                 flex: 1,
-                                height: 44,
-                                borderRadius: 14,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: isDarkMode ? '#1E1E2E' : '#F2F2F7',
+                                borderRadius: 28,
                                 borderWidth: 1,
-                                borderColor: colors.border,
-                                backgroundColor: isDarkMode ? '#121218' : '#F7F7FA',
+                                borderColor: isDarkMode ? '#ffffff15' : '#00000010',
                                 paddingHorizontal: 16,
-                                fontSize: 14,
-                                fontWeight: '500',
-                                color: colors.text,
-                            }}
-                            value={chatInput}
-                            onChangeText={setChatInput}
-                            placeholder="Mensagem..."
-                            placeholderTextColor={colors.subtext}
-                        />
-                        <Pressable
-                            onPress={handleSendMessage}
-                            style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}
-                        >
-                            <Ionicons name="send" size={18} color="#FFF" />
-                        </Pressable>
+                                minHeight: 48,
+                            }}>
+                                <TextInput
+                                    style={{ flex: 1, color: colors.text, fontSize: 15, paddingVertical: 10, outlineStyle: 'none' } as any}
+                                    value={chatInput}
+                                    onChangeText={setChatInput}
+                                    placeholder={`Mensagem para ${chatTarget?.name ?? ''}...`}
+                                    placeholderTextColor={colors.subtext}
+                                    multiline
+                                    onSubmitEditing={handleSendMessage}
+                                />
+                            </View>
+
+                            {/* Send button */}
+                            <Pressable
+                                onPress={handleSendMessage}
+                                style={({ pressed }) => ({
+                                    width: 48,
+                                    height: 48,
+                                    backgroundColor: (chatInput.trim() || chatMediaUri) ? colors.primary : (isDarkMode ? '#333' : '#DDD'),
+                                    borderRadius: 24,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    opacity: pressed ? 0.7 : 1,
+                                    transform: [{ scale: pressed ? 0.92 : 1 }],
+                                    shadowColor: colors.primary,
+                                    shadowOffset: { width: 0, height: 4 },
+                                    shadowOpacity: (chatInput.trim() || chatMediaUri) ? 0.45 : 0,
+                                    shadowRadius: 10,
+                                    elevation: (chatInput.trim() || chatMediaUri) ? 6 : 0,
+                                })}
+                            >
+                                <Ionicons name="send" size={20} color={(chatInput.trim() || chatMediaUri) ? '#FFF' : colors.subtext} style={{ marginLeft: 2 }} />
+                            </Pressable>
+                        </View>
                     </View>
                 </SafeAreaView>
             </Modal>
@@ -945,10 +1042,14 @@ export default function SocialScreen() {
                                 </View>
                                 <View style={{ flex: 1, paddingTop: 30 }}>
                                     <Text style={[styles.cardName, { color: colors.text }]}>{activePreviewMember?.name || 'Explorador'}</Text>
-                                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.subtext, marginTop: 2 }}>#{activePreviewMember?.id?.substring(0, 8) || '?'}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: activePreviewMember?.online ? '#4CAF50' : '#E74C3C' }} />
+                                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.subtext }}>{activePreviewMember?.online ? 'Online' : 'Offline'}</Text>
+                                    </View>
                                 </View>
                             </View>
 
+                            {/* Stats Grid */}
                             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
                                 <View style={{ flex: 1, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', padding: 14, borderRadius: 14, alignItems: 'center' }}>
                                     <Text style={{ fontSize: 9, color: colors.subtext, fontWeight: '700', letterSpacing: 0.8 }}>LEVEL</Text>
@@ -958,48 +1059,48 @@ export default function SocialScreen() {
                                     <Text style={{ fontSize: 9, color: colors.subtext, fontWeight: '700', letterSpacing: 0.8 }}>XP</Text>
                                     <Text style={{ fontSize: 20, fontWeight: '800', color: colors.primary, marginTop: 2 }}>{activePreviewMember?.xp || 0}</Text>
                                 </View>
+                                <View style={{ flex: 1, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', padding: 14, borderRadius: 14, alignItems: 'center' }}>
+                                    <Text style={{ fontSize: 9, color: colors.subtext, fontWeight: '700', letterSpacing: 0.8 }}>PET</Text>
+                                    <View style={{ marginTop: 4 }}>
+                                        <Ionicons name="paw" size={18} color={colors.primary} />
+                                    </View>
+                                </View>
                             </View>
 
-                            <View style={[styles.cardDataRow, { borderColor: colors.border, borderTopWidth: 1, paddingTop: 14 }]}>
+                            {/* Info Detalhada */}
+                            <View style={[styles.cardDataRow, { borderColor: colors.border, borderTopWidth: 1, borderBottomWidth: 0, paddingTop: 14 }]}>
                                 <View style={styles.cardDataItem}>
+                                    <Ionicons name="finger-print-outline" size={16} color={colors.primary} />
+                                    <Text style={[styles.cardDataText, { color: colors.subtext, flex: 1 }]} numberOfLines={1}>
+                                        Wander-ID: #{activePreviewMember?.wander_id || activePreviewMember?.id?.substring(0, 8) || '?'}
+                                    </Text>
+                                </View>
+                                <View style={[styles.cardDataItem, { marginTop: 10 }]}>
                                     <Ionicons name="location-outline" size={16} color={colors.primary} />
                                     <Text style={[styles.cardDataText, { color: colors.subtext, flex: 1 }]} numberOfLines={1}>
                                         {activePreviewMember?.location || 'Área Selvagem'}
                                     </Text>
                                 </View>
+                                <View style={[styles.cardDataItem, { marginTop: 10 }]}>
+                                    <Ionicons name="paw-outline" size={16} color={colors.primary} />
+                                    <Text style={[styles.cardDataText, { color: colors.subtext, flex: 1 }]} numberOfLines={1}>
+                                        Pet: {activePreviewMember?.species || 'bunny'}
+                                    </Text>
+                                </View>
                             </View>
 
-                            <View style={styles.cardActions}>
-                                <Pressable
-                                    onPress={() => {
-                                        setIsMemberCardVisible(false);
-                                        handleOpenChat(activePreviewMember.id, activePreviewMember.name, activePreviewMember.avatar);
-                                    }}
-                                    style={[styles.cardBtn, { backgroundColor: colors.primary, flex: 2 }]}
-                                >
-                                    <Ionicons name="chatbubble-outline" size={18} color="#FFF" />
-                                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>Chat</Text>
-                                </Pressable>
-                                {activeSocialSubTab === 'recomendados' && (
+                            {/* Ações: apenas Recomendar (quando aplicável) */}
+                            {activeSocialSubTab === 'recomendados' && (
+                                <View style={[styles.cardActions, { marginTop: 16 }]}>
                                     <Pressable
                                         onPress={() => handleRecommend(activePreviewMember.id)}
-                                        style={[styles.cardBtn, { backgroundColor: colors.primary + '15', flex: 2 }]}
+                                        style={[styles.cardBtn, { backgroundColor: colors.primary + '15', flex: 1 }]}
                                     >
                                         <Ionicons name="share-social" size={18} color={colors.primary} />
                                         <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>Recomendar</Text>
                                     </Pressable>
-                                )}
-                                <Pressable
-                                    onPress={() => handleToggleLike(activePreviewMember.id)}
-                                    style={[styles.cardBtn, { backgroundColor: likedIds.includes(activePreviewMember?.id) ? colors.primary + '18' : (isDarkMode ? '#ffffff08' : '#0000000A'), flex: 1 }]}
-                                >
-                                    <Ionicons
-                                        name={likedIds.includes(activePreviewMember?.id) ? "heart" : "heart-outline"}
-                                        size={20}
-                                        color={colors.primary}
-                                    />
-                                </Pressable>
-                            </View>
+                                </View>
+                            )}
                         </View>
                     </Pressable>
                 </Pressable>

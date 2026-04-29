@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal, TextInput } from 'react-native';
+import { View, StyleSheet, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal, TextInput, DeviceEventEmitter } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,6 +11,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Battery from 'expo-battery';
 
 import { MapViewLibre, MapMarkerLibre } from '@/components/MapViewLibre';
+import { Leaderboard } from '@/components/Leaderboard';
 import { GameMarker } from '@/components/GameMarker';
 import { SpotMarker, SpotType } from '@/components/SpotMarker';
 import { TreasureMarker } from '@/components/TreasureMarker';
@@ -23,6 +25,8 @@ import { isValidUUID } from '@/services/AuthService';
 import { clusterPlayers, MarkerData, PlayerData } from '@/utils/clusterPlayers';
 import { MergedMarker } from '@/components/MergedMarker';
 import { LiquidMergeOverlay } from '@/components/LiquidMergeOverlay';
+import GameMapView from '@/components/GameMapView';
+import RadarHUD from '@/components/RadarHUD';
 import { CATALOG } from '../../constants/catalog';
 import { ChatMessage } from '../../types/social';
 
@@ -48,7 +52,9 @@ import {
     getInventoryLocal,
     getGemsLocal,
     saveGemsLocal,
-    addCoinsLocal
+    addCoinsLocal,
+    getStatusLocal,
+    saveStatusLocal
 } from '@/localDatabase';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -71,11 +77,16 @@ const QUICK_MESSAGES = [
 const AnimatedLikeButton = ({ isLiked, onToggle }: { isLiked: boolean, onToggle: () => void }) => {
     const scale = useRef(new Animated.Value(1)).current;
 
+    useEffect(() => {
+        if (isLiked) {
+            Animated.sequence([
+                Animated.spring(scale, { toValue: 1.3, friction: 3, tension: 40, useNativeDriver: true }),
+                Animated.spring(scale, { toValue: 1, friction: 3, tension: 40, useNativeDriver: true })
+            ]).start();
+        }
+    }, [isLiked]);
+
     const handlePress = () => {
-        Animated.sequence([
-            Animated.timing(scale, { toValue: 1.4, duration: 100, useNativeDriver: true }),
-            Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true })
-        ]).start();
         onToggle();
     };
 
@@ -174,7 +185,7 @@ export default function MapScreen() {
 
     const [selectedMember, setSelectedMember] = useState<any>(null);
     const [showMemberDetail, setShowMemberDetail] = useState(false);
-    const [activeCircle, setActiveCircle] = useState('Principal');
+    const [activeCircle, setActiveCircle] = useState('Geral');
     const [userCircles, setUserCircles] = useState<any[]>([]);
     const [showCircleSelector, setShowCircleSelector] = useState(false);
     const [activeCircleMembers, setActiveCircleMembers] = useState<string[]>([]);
@@ -184,6 +195,7 @@ export default function MapScreen() {
     const [visibleMarkers, setVisibleMarkers] = useState<MarkerData[]>([]);
     const [currentRegion, setCurrentRegion] = useState<any>(null);
     const lastMarkerCount = useRef(0);
+    const lastClusterKey = useRef("");
     
     // Estados de Animação Líquida
     const [mergePoints, setMergePoints] = useState<{ x: number, y: number }[]>([]);
@@ -228,6 +240,76 @@ export default function MapScreen() {
     const [isOtherTyping, setIsOtherTyping] = useState(false);
     const typingSubscription = useRef<any>(null);
     const typingTimeout = useRef<any>(null);
+    const [chatMediaUri, setChatMediaUri] = useState<string | null>(null);
+    const [fullScreenImageUri, setFullScreenImageUri] = useState<string | null>(null);
+    const [currentStatus, setCurrentStatus] = useState<string | null>(null);
+    const currentStatusRef = useRef<string | null>(null);
+
+    const updateStatus = (status: string | null) => {
+        setCurrentStatus(status);
+        currentStatusRef.current = status;
+        saveStatusLocal(status); // Persistir
+    };
+
+    
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            const { status, timestamp } = await getStatusLocal();
+            if (status && Date.now() - timestamp >= 24 * 3600 * 1000) {
+                updateStatus(null);
+                DeviceEventEmitter.emit('currentStatusReport', null);
+            }
+        }, 60000); // Check every minute
+        return () => clearInterval(interval);
+    }, []);
+
+    // Listeners para Status vindos do Perfil
+    useEffect(() => {
+        const sub = DeviceEventEmitter.addListener('statusChanged', (status) => {
+            updateStatus(status);
+            if (lastLocation.current) {
+                broadcastLocation({
+                    ...lastLocation.current,
+                    heading: location.heading,
+                    timestamp: Date.now()
+                }, status);
+            }
+        });
+
+        const reqSub = DeviceEventEmitter.addListener('requestCurrentStatus', () => {
+            DeviceEventEmitter.emit('currentStatusReport', currentStatusRef.current);
+        });
+
+        return () => {
+            sub.remove();
+            reqSub.remove();
+        };
+    }, [currentStatus, location.heading]);
+
+    const STATUS_PRESETS = [
+        { label: 'Passeando!', emoji: '🐕' },
+        { label: 'Procurando tesouros!', emoji: '💎' },
+        { label: 'Bora sincronizar?', emoji: '🤝' },
+        { label: 'Em missão!', emoji: '⚔️' },
+        { label: 'Dando um tempo', emoji: '☕' },
+        { label: 'Ocupado', emoji: '📴' },
+    ];
+
+    const handlePickChatMedia = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão necessária', 'Permita o acesso à galeria para enviar fotos.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]?.uri) {
+            setChatMediaUri(result.assets[0].uri);
+        }
+    };
 
     const handleSocialRadarScan = async () => {
         setShowSocialRadar(true);
@@ -364,10 +446,14 @@ export default function MapScreen() {
                     avatar: p.avatar,
                     lat: loc?.latitude || 0,
                     lon: loc?.longitude || 0,
-                    online: loc ? (new Date().getTime() - new Date(loc.updated_at).getTime()) < 60000 : false,
+                    online: loc ? (new Date().getTime() - new Date(loc.updated_at).getTime()) < 60000 : (p.online || false),
                     battery: 85,
-                    since: loc ? 'Agora' : 'Offline',
-                    hasLocation: !!loc
+                    since: loc ? 'Agora' : (p.since || 'Offline'),
+                    hasLocation: !!loc,
+                    level: p.level || 1,
+                    xp: p.xp || 0,
+                    species: p.species || 'bunny',
+                    wander_id: p.wander_id || p.wanderId || `#${p.id?.substring(0, 6) || '?'}`
                 };
             });
             // @ts-ignore
@@ -553,6 +639,14 @@ export default function MapScreen() {
             }
             
             setUserAvatarUri(avatar);
+
+        const { status, timestamp } = await getStatusLocal();
+        if (status && Date.now() - timestamp < 24 * 3600 * 1000) {
+            updateStatus(status);
+        } else if (status) {
+            updateStatus(null);
+        }
+
             if (u.name) setUserName(u.name);
         }
 
@@ -615,14 +709,23 @@ export default function MapScreen() {
                 // Se estiver em modo economia e o deslocamento for muito pequeno, ignoramos para poupar processamento se desejado
                 // Mas aqui apenas respeitamos as opções de intervalo do watchPositionAsync
                 const { latitude: newLat, longitude: newLon, heading } = loc.coords;
-                setLocation(prev => ({ ...prev, latitude: newLat, longitude: newLon, heading: heading || prev.heading }));
+                
+                // Throttle: Só atualiza se houver mudança significativa (> 2 metros) ou mudança de direção
+                const dist = lastLocation.current ? 
+                    Math.sqrt(Math.pow(newLat - lastLocation.current.latitude, 2) + Math.pow(newLon - lastLocation.current.longitude, 2)) * 111320 : 
+                    999;
+
+                if (dist > 2 || (heading && Math.abs((heading || 0) - (location.heading || 0)) > 10)) {
+                    setLocation(prev => ({ ...prev, latitude: newLat, longitude: newLon, heading: heading || prev.heading }));
+                    lastLocation.current = { latitude: newLat, longitude: newLon };
+                }
                 
                 broadcastLocation({
                     latitude: newLat,
                     longitude: newLon,
                     heading: heading || 0,
                     timestamp: Date.now()
-                });
+                }, currentStatusRef.current);
                 const syncCloudLocation = async () => {
                     const user = await getCurrentUserLocal();
                     if (user && isValidUUID(user.id)) {
@@ -659,22 +762,16 @@ export default function MapScreen() {
 
     // --- LÓGICA DE MECÂNICAS ATIVAS ---
 
+    // Sincronização de Dados e Localização (Otimizado)
     useEffect(() => {
-        let interval: any;
-        if (radarTimer > 0) {
-            interval = setInterval(() => {
-                setRadarTimer(prev => prev > 0 ? prev - 1 : 0);
-            }, 1000);
-        }
-        return () => clearInterval(interval);
-    }, [radarTimer]);
+        if (!mapReady) return;
+        loadData();
+    }, [mapReady]);
 
-    // Lógica de Agrupamento de Jogadores (Zenly Style)
-    useEffect(() => {
-        const players: PlayerData[] = [];
-        
-        // Adicionar "Eu"
-        players.push({
+    // Lógica de Agrupamento de Jogadores (Otimizado com useMemo)
+    const players = React.useMemo(() => {
+        const list: PlayerData[] = [];
+        list.push({
             id: 'me',
             name: userName,
             coordinates: { latitude: location.latitude, longitude: location.longitude },
@@ -682,37 +779,41 @@ export default function MapScreen() {
             imageUri: userAvatarUri,
             pet: pet,
             isMe: true,
-            heading: location.heading
+            heading: location.heading,
+            status: currentStatus
         });
 
-        // Adicionar outros usuários remotos
         Object.values(remoteUsers).forEach(u => {
-            if (activeCircle !== 'Principal' && !activeCircleMembers.includes(u.id)) return;
+            if (activeCircle !== 'Geral' && !activeCircleMembers.includes(u.id)) return;
             if (u.location) {
-                players.push({
+                list.push({
                     id: u.id,
                     name: u.name,
                     coordinates: { latitude: u.location.latitude, longitude: u.location.longitude },
                     color: colors.primary,
                     imageUri: u.imageUri,
                     pet: u.pet,
-                    heading: u.location.heading
+                    heading: u.location.heading,
+                    status: u.status
                 });
             }
         });
+        return list;
+    }, [remoteUsers, location, activeCircle, activeCircleMembers, userName, userAvatarUri, pet, currentStatus]);
 
+    useEffect(() => {
         const clusters = clusterPlayers(players, currentRegion || location, 0.001);
-        
-        // Detectar Mudança de Estado (Fusão ou Separação)
-        if (lastMarkerCount.current > 0 && clusters.length !== lastMarkerCount.current) {
-            console.log("🌊 MUDANÇA DE CLUSTER! Animando líquido...");
-            setShowMerge(true);
-            setTimeout(() => setShowMerge(false), 1500);
+        const clusterKey = clusters.map(c => `${c.id}-${c.coordinates.latitude}-${c.coordinates.longitude}`).join('|');
+        if (clusterKey !== lastClusterKey.current) {
+            if (lastMarkerCount.current > 0 && clusters.length !== lastMarkerCount.current) {
+                setShowMerge(true);
+                setTimeout(() => setShowMerge(false), 1500);
+            }
+            lastMarkerCount.current = clusters.length;
+            lastClusterKey.current = clusterKey;
+            setVisibleMarkers(clusters);
         }
-        
-        lastMarkerCount.current = clusters.length;
-        setVisibleMarkers(clusters);
-    }, [remoteUsers, location, currentRegion, activeCircle, activeCircleMembers, userName, userAvatarUri, pet]);
+    }, [players, currentRegion]);
 
     const handleRegionChangeComplete = (region: any) => {
         setCurrentRegion(region);
@@ -728,6 +829,7 @@ export default function MapScreen() {
         });
         Alert.alert("Convite Enviado!", "Chamando jogadores em um raio de 1km para sincronizar.");
     };
+
 
     const acceptSync = () => {
         if (syncPayload) {
@@ -896,11 +998,26 @@ export default function MapScreen() {
         }, 2000);
     };
 
-    const handleSendMessage = async () => {
-        if (!chatInput.trim() || !chatTarget) return;
+    const handleSendMessage = async (directText?: string) => {
+        const txt = (directText || chatInput).trim();
+        const hasImage = !!chatMediaUri;
+        if (!txt && !hasImage) return;
+        if (!chatTarget) return;
         const user = await getCurrentUserLocal();
-        if (user) {
-            await AuthService.sendMessageCloud(user.id, chatTarget.id, chatInput.trim());
+        if (!user) return;
+
+        // Upload image first if present
+        if (hasImage && chatMediaUri) {
+            const imageUrl = await AuthService.uploadChatImage(user.id, chatMediaUri);
+            if (imageUrl) {
+                await AuthService.sendMessageCloud(user.id, chatTarget.id, `[IMG]${imageUrl}`);
+            }
+            setChatMediaUri(null);
+        }
+
+        // Send text if present
+        if (txt) {
+            await AuthService.sendMessageCloud(user.id, chatTarget.id, txt);
             setChatInput('');
         }
     };
@@ -972,6 +1089,7 @@ export default function MapScreen() {
     }, [showCircleSelector]);
 
     return (
+        <MarkerCaptureProvider>
         <View style={styles.container}>
             <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
             
@@ -983,86 +1101,22 @@ export default function MapScreen() {
                         <Text style={{ color: colors.subtext, fontSize: 14 }}>Aguarde enquanto localizamos você</Text>
                     </View>
                 ) : (
-                    <MarkerCaptureProvider>
-                        <MapViewLibre 
-                            ref={mapRef}
-                            region={location} 
-                            onPress={() => setShowMemberDetail(false)}
-                            onRegionChangeComplete={handleRegionChangeComplete}
-                        >
-                        
-                        {/* Pontos Oficiais no Mapa - Somem com Zoom Out */}
-                        {(currentRegion?.latitudeDelta < 0.02 || !currentRegion) && PET_SPOTS.map(spot => (
-                            <SpotMarker 
-                                key={spot.id}
-                                id={spot.id}
-                                name={spot.name}
-                                type={spot.type}
-                                latitude={spot.lat}
-                                longitude={spot.lon}
-                                isNear={activeSpot?.id === spot.id}
-                            />
-                        ))}
-
-                        {/* Tesouros do Radar */}
-                        {treasures.map(t => (
-                            <TreasureMarker 
-                                key={t.id}
-                                id={t.id}
-                                latitude={t.lat}
-                                longitude={t.lon}
-                                type={t.type}
-                                onPress={() => collectTreasure(t)}
-                            />
-                        ))}
-
-                        {/* Renderização Dinâmica de Marcadores (Clustered) */}
-                        {visibleMarkers.map(m => {
-                            // Esconder marcadores que estão em fase de animação
-                            if (showMerge && animatingIds.has(m.id)) {
-                                // Mostra um efeito de transição se desejar
-                            }
-
-                            if (m.type === 'merged' && m.players) {
-                                return (
-                                    <MergedMarker 
-                                        key={m.id}
-                                        id={m.id}
-                                        latitude={m.coordinates.latitude}
-                                        longitude={m.coordinates.longitude}
-                                        imageUris={(m.players || []).map((p: any) => p.imageUri)}
-                                        primaryColor={(m.players || [])[0]?.color || colors.primary}
-                                        onPress={() => {
-                                            if (m.players) handleMemberTap(m.players[0]);
-                                        }}
-                                    />
-                                );
-                            }
-
-                            if (m.type === 'single' && m.player) {
-                                return (
-                                    <GameMarker 
-                                        key={m.id}
-                                        id={m.id}
-                                        latitude={m.coordinates.latitude}
-                                        longitude={m.coordinates.longitude}
-                                        heading={m.player.heading || 0}
-                                        name={m.player.name}
-                                        primaryColor={m.player.color}
-                                        pet={m.player.pet}
-                                        avatarUri={m.player.imageUri}
-                                        isMe={m.player.isMe}
-                                        onPress={() => {
-                                            if (m.player) handleMemberTap(m.player);
-                                        }}
-                                    />
-                                );
-                            }
-
-                            return null;
-                        })}
-                    </MapViewLibre>
-                    </MarkerCaptureProvider>
+                    <GameMapView 
+                        mapRef={mapRef}
+                        location={location}
+                        currentRegion={currentRegion}
+                        onPress={() => setShowMemberDetail(false)}
+                        onRegionChangeComplete={handleRegionChangeComplete}
+                        petSpots={PET_SPOTS}
+                        activeSpotId={activeSpot?.id}
+                        treasures={treasures}
+                        onCollectTreasure={collectTreasure}
+                        visibleMarkers={visibleMarkers}
+                        animatingIds={animatingIds}
+                        showMerge={showMerge}
+                        handleMemberTap={handleMemberTap}
+                        colors={colors}
+                    />
                 )}
 
                 <View style={[styles.topOverlay, { paddingTop: insets.top }]} pointerEvents="box-none">
@@ -1192,36 +1246,71 @@ export default function MapScreen() {
                                 </View>
                             </View>
 
-                            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 30, paddingHorizontal: 20 }}>
-                                <Pressable 
-                                    style={{ flex: 1, height: 60, borderRadius: 20, backgroundColor: '#2C2C31', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#444' }}
-                                    onPress={() => handleToggleLike(selectedMember.id)}
-                                >
-                                    <Ionicons 
-                                        name={likedIds.includes(selectedMember.id) ? "heart" : "heart-outline"} 
-                                        size={28} 
-                                        color={likedIds.includes(selectedMember.id) ? "#FF4444" : "#FFF"} 
-                                    />
-                                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>{likedIds.includes(selectedMember.id) ? 'Curtiu' : 'Curtir'}</Text>
-                                </Pressable>
+                            {/* Stats Grid — Nível, XP, Pet */}
+                            <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, paddingHorizontal: 20 }}>
+                                <View style={{ flex: 1, backgroundColor: '#1C1C21', borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#333' }}>
+                                    <Text style={{ color: '#888', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>NÍVEL</Text>
+                                    <Text style={{ color: '#A78BFF', fontSize: 24, fontWeight: '900', marginTop: 4 }}>{selectedMember.level || 1}</Text>
+                                </View>
+                                <View style={{ flex: 1, backgroundColor: '#1C1C21', borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#333' }}>
+                                    <Text style={{ color: '#888', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>XP</Text>
+                                    <Text style={{ color: '#A78BFF', fontSize: 24, fontWeight: '900', marginTop: 4 }}>{selectedMember.xp || 0}</Text>
+                                </View>
+                                <View style={{ flex: 1, backgroundColor: '#1C1C21', borderRadius: 16, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#333' }}>
+                                    <Text style={{ color: '#888', fontSize: 10, fontWeight: '700', letterSpacing: 0.8 }}>PET</Text>
+                                    <View style={{ marginTop: 6 }}>
+                                        <Ionicons name="paw" size={22} color="#A78BFF" />
+                                    </View>
+                                </View>
+                            </View>
 
+                            {/* Ações Rápidas (Chat e Curtir) */}
+                            <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginTop: 16 }}>
                                 <Pressable 
-                                    style={{ flex: 1, height: 60, borderRadius: 20, backgroundColor: '#A78BFF', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{ flex: 1, backgroundColor: '#A78BFF', paddingVertical: 14, borderRadius: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                                     onPress={() => handleOpenChat(selectedMember.id, selectedMember.name, selectedMember.avatar)}
                                 >
-                                    <Ionicons name="chatbubble-ellipses" size={28} color="#FFF" />
-                                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700', marginTop: 4 }}>Chat</Text>
+                                    <Ionicons name="chatbubble" size={20} color="#FFF" />
+                                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>Chat</Text>
+                                </Pressable>
+                                <Pressable 
+                                    style={{ flex: 1, backgroundColor: likedIds.includes(selectedMember.id) ? '#FF444422' : '#333', paddingVertical: 14, borderRadius: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: likedIds.includes(selectedMember.id) ? '#FF4444' : '#444' }}
+                                    onPress={() => handleToggleLike(selectedMember.id)}
+                                >
+                                    <Ionicons name={likedIds.includes(selectedMember.id) ? "heart" : "heart-outline"} size={20} color={likedIds.includes(selectedMember.id) ? "#FF4444" : "#FFF"} />
+                                    <Text style={{ color: likedIds.includes(selectedMember.id) ? '#FF4444' : '#FFF', fontWeight: '800', fontSize: 15 }}>{likedIds.includes(selectedMember.id) ? 'Curtiu' : 'Curtir'}</Text>
                                 </Pressable>
                             </View>
 
-                            <View style={{ padding: 24, marginTop: 20, backgroundColor: '#16161D', borderRadius: 24, marginHorizontal: 20 }}>
+                            {/* Informações Detalhadas */}
+                            <View style={{ padding: 24, marginTop: 16, backgroundColor: '#16161D', borderRadius: 24, marginHorizontal: 20 }}>
                                 <Text style={{ color: '#888', fontWeight: '800', fontSize: 12, letterSpacing: 1, marginBottom: 16 }}>INFORMAÇÕES DO EXPLORADOR</Text>
                                 
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Ionicons name="finger-print" size={20} color="#A78BFF" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ color: '#FFF', fontWeight: '700' }}>Wander-ID</Text>
+                                        <Text style={{ color: '#AAA', fontSize: 13 }}>#{selectedMember.wander_id || selectedMember.id?.substring(0, 8) || '?'}</Text>
+                                    </View>
+                                </View>
+
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                                    <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Ionicons name="paw" size={20} color="#A78BFF" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ color: '#FFF', fontWeight: '700' }}>Pet</Text>
+                                        <Text style={{ color: '#AAA', fontSize: 13 }}>{selectedMember.species || 'bunny'}</Text>
+                                    </View>
+                                </View>
+
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                                     <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
                                         <Ionicons name="location" size={20} color="#A78BFF" />
                                     </View>
-                                    <View>
+                                    <View style={{ flex: 1 }}>
                                         <Text style={{ color: '#FFF', fontWeight: '700' }}>Localização</Text>
                                         <Text style={{ color: '#AAA', fontSize: 13 }}>{selectedMember.hasLocation ? `${selectedMember.lat.toFixed(4)}, ${selectedMember.lon.toFixed(4)}` : 'Oculta pelo usuário'}</Text>
                                     </View>
@@ -1231,7 +1320,7 @@ export default function MapScreen() {
                                     <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' }}>
                                         <Ionicons name="time" size={20} color="#A78BFF" />
                                     </View>
-                                    <View>
+                                    <View style={{ flex: 1 }}>
                                         <Text style={{ color: '#FFF', fontWeight: '700' }}>Última Atividade</Text>
                                         <Text style={{ color: '#AAA', fontSize: 13 }}>{selectedMember.since}</Text>
                                     </View>
@@ -1260,46 +1349,35 @@ export default function MapScreen() {
                             >
                                 <Ionicons name="bag-handle-outline" size={20} color={showBackpack ? "#FFF" : "#FF4444"} />
                             </Pressable>
-                            <Pressable 
-                                style={[styles.categoryTab, { backgroundColor: radarTimer > 0 ? '#444' : '#2C2C31' }]} 
+                            <RadarHUD 
+                                initialTimer={radarTimer}
                                 onPress={handleRadarPress}
-                            >
-                                <MaterialCommunityIcons name="treasure-chest" size={22} color={radarTimer > 0 ? "#666" : "#FFD700"} />
-                                {radarTimer > 0 && (
-                                    <View style={{ position: 'absolute', bottom: -12 }}>
-                                        <Text style={{ fontSize: 9, color: '#AAA', fontWeight: '800' }}>
-                                            {radarTimer < 60 ? `${radarTimer}s` : `${Math.floor(radarTimer / 60)}m`}
-                                        </Text>
-                                    </View>
-                                )}
-                            </Pressable>
+                                onTimerEnd={() => setRadarTimer(0)}
+                            />
                         </View>
                         <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-                            <Pressable style={styles.memberRow}>
-                                <View style={[styles.memberAvatar, { borderColor: '#4ADE80', overflow: 'hidden' }]}>
-                                    {userAvatarUri ? (
-                                        <Image source={{ uri: userAvatarUri }} style={{ width: '100%', height: '100%' }} />
-                                    ) : (
-                                        <Ionicons name="person" size={22} color="#A78BFF" />
-                                    )}
-                                </View>
-                                <View style={styles.memberInfo}>
-                                    <Text style={{ color: '#FFF', fontWeight: '800' }}>Você</Text>
-                                    <Text style={{ color: '#AAA' }}>Localização atual</Text>
-                                </View>
-                                <View style={{ backgroundColor: '#2C2C31', padding: 6, borderRadius: 8 }}>
-                                    <Text style={{ color: '#FFF', fontSize: 12 }}>Lv {levelData.level}</Text>
-                                </View>
-                            </Pressable>
+                                    <Pressable style={styles.memberRow}>
+                                        <View style={[styles.memberAvatar, { borderColor: '#4ADE80', overflow: 'hidden' }]}>
+                                            {userAvatarUri ? (
+                                                <Image source={{ uri: userAvatarUri }} style={{ width: '100%', height: '100%' }} />
+                                            ) : (
+                                                <Ionicons name="person" size={22} color="#A78BFF" />
+                                            )}
+                                        </View>
+                                        <View style={styles.memberInfo}>
+                                            <Text style={{ color: '#FFF', fontWeight: '800' }}>Você</Text>
+                                            <Text style={{ color: '#AAA' }}>Localização atual</Text>
+                                        </View>
+                                        <View style={{ backgroundColor: '#2C2C31', padding: 6, borderRadius: 8 }}>
+                                            <Text style={{ color: '#FFF', fontSize: 12 }}>Lv {levelData.level}</Text>
+                                        </View>
+                                    </Pressable>
 
-                            {circleMembers.map(m => {
-                                const isLiked = likedIds.includes(m.id);
-                                return (
-                                    <View key={m.id} style={styles.memberRow}>
-                                        <Pressable 
-                                            style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 16 }}
-                                            onPress={() => handleMemberTap(m)}
-                                        >
+                                    {circleMembers.filter(m => {
+                                        if (activeCircle === 'Geral') return true;
+                                        return activeCircleMembers.includes(m.id);
+                                    }).map(m => (
+                                        <Pressable key={m.id} style={styles.memberRow} onPress={() => handleMemberTap(m)}>
                                             <View style={[styles.memberAvatar, { borderColor: m.online ? '#4ADE80' : '#333', overflow: 'hidden' }]}>
                                                 {m.avatar ? (
                                                     <Image source={{ uri: m.avatar }} style={{ width: '100%', height: '100%' }} />
@@ -1310,28 +1388,25 @@ export default function MapScreen() {
                                             <View style={styles.memberInfo}>
                                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                                     <Text style={{ color: '#FFF', fontWeight: '800' }}>{m.name}</Text>
+                                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: m.online ? '#4ADE80' : '#555' }} />
                                                 </View>
                                                 <Text style={{ color: '#AAA', fontSize: 11 }}>
                                                     {m.hasLocation ? `${m.lat.toFixed(4)}, ${m.lon.toFixed(4)}` : 'Localização oculta'}
                                                 </Text>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#A78BFF18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                                        <Ionicons name="trending-up" size={9} color="#A78BFF" />
+                                                        <Text style={{ fontSize: 9, fontWeight: '800', color: '#A78BFF' }}>Lv {m.level || 1}</Text>
+                                                    </View>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#ffffff08', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                                        <Ionicons name="paw" size={9} color="#888" />
+                                                        <Text style={{ fontSize: 9, fontWeight: '700', color: '#888' }}>{m.species || 'bunny'}</Text>
+                                                    </View>
+                                                </View>
                                             </View>
+                                            <Ionicons name="chevron-forward" size={18} color="#444" />
                                         </Pressable>
-
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                                            <AnimatedLikeButton 
-                                                isLiked={isLiked} 
-                                                onToggle={() => handleToggleLike(m.id)} 
-                                            />
-                                            <Pressable onPress={() => handleOpenChat(m.id, m.name, m.avatar)}>
-                                                <Ionicons name="chatbubble-ellipses-outline" size={22} color="#AAA" />
-                                            </Pressable>
-                                            <Pressable onPress={() => handleMemberTap(m)}>
-                                                <Ionicons name="chevron-forward" size={18} color="#444" />
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                );
-                            })}
+                                    ))}
                         </ScrollView>
                     </>
                 )}
@@ -1526,12 +1601,12 @@ export default function MapScreen() {
                                     <Pressable 
                                         style={({ pressed }) => [
                                             styles.dropdownItem,
-                                            { backgroundColor: activeCircle === 'Principal' ? colors.accent : (pressed ? colors.border : 'transparent') }
+                                            { backgroundColor: activeCircle === 'Geral' ? colors.accent : (pressed ? colors.border : 'transparent') }
                                         ]}
-                                        onPress={() => handleCircleSelect('Principal', [])}
+                                        onPress={() => handleCircleSelect('Geral', [])}
                                     >
-                                        <Ionicons name="home" size={18} color={activeCircle === 'Principal' ? colors.primary : colors.subtext} />
-                                        <Text style={[styles.dropdownText, { color: activeCircle === 'Principal' ? colors.text : colors.subtext }]}>Principal</Text>
+                                        <Ionicons name="globe-outline" size={18} color={activeCircle === 'Geral' ? colors.primary : colors.subtext} />
+                                        <Text style={[styles.dropdownText, { color: activeCircle === 'Geral' ? colors.text : colors.subtext }]}>Geral</Text>
                                     </Pressable>
 
                                     {userCircles.map((circle: any) => {
@@ -1991,25 +2066,38 @@ export default function MapScreen() {
                     >
                         {chatMessages.map((msg) => {
                             const isMe = msg.senderId === 'me';
+                            const isImage = msg.text?.startsWith('[IMG]');
+                            const imageUrl = isImage ? msg.text.replace('[IMG]', '') : null;
                             return (
                                 <View key={msg.id} style={{ 
                                     alignSelf: isMe ? 'flex-end' : 'flex-start', 
-                                    backgroundColor: isMe ? colors.primary : (isDarkMode ? '#2C2C31' : '#FFF'), 
-                                    paddingHorizontal: 16, 
-                                    paddingVertical: 10, 
+                                    backgroundColor: isImage ? 'transparent' : (isMe ? colors.primary : (isDarkMode ? '#2C2C31' : '#FFF')), 
+                                    paddingHorizontal: isImage ? 0 : 16, 
+                                    paddingVertical: isImage ? 0 : 10, 
                                     borderRadius: 20, 
                                     borderBottomRightRadius: isMe ? 4 : 20,
                                     borderBottomLeftRadius: isMe ? 20 : 4,
                                     marginBottom: 12,
                                     maxWidth: '80%',
-                                    elevation: 2,
+                                    overflow: 'hidden',
+                                    elevation: isImage ? 0 : 2,
                                     shadowColor: '#000',
                                     shadowOffset: { width: 0, height: 2 },
                                     shadowOpacity: 0.1,
                                     shadowRadius: 4
                                 }}>
-                                    <Text style={{ color: isMe ? '#FFF' : colors.text, fontSize: 15 }}>{msg.text}</Text>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 }}>
+                                    {isImage && imageUrl ? (
+                                        <Pressable onPress={() => setFullScreenImageUri(imageUrl)}>
+                                            <Image 
+                                                source={{ uri: imageUrl }} 
+                                                style={{ width: 220, height: 220, borderRadius: 18 }} 
+                                                resizeMode="cover"
+                                            />
+                                        </Pressable>
+                                    ) : (
+                                        <Text style={{ color: isMe ? '#FFF' : colors.text, fontSize: 15 }}>{msg.text}</Text>
+                                    )}
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4, paddingHorizontal: isImage ? 4 : 0 }}>
                                         <Text style={{ color: isMe ? 'rgba(255,255,255,0.6)' : colors.subtext, fontSize: 10 }}>
                                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </Text>
@@ -2021,12 +2109,12 @@ export default function MapScreen() {
                         {isOtherTyping && <TypingIndicator />}
                     </ScrollView>
 
-                    <View style={{ padding: 16, backgroundColor: isDarkMode ? '#1C1C21' : '#FFF', borderTopWidth: 1, borderTopColor: isDarkMode ? '#333' : '#EEE' }}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                    <View style={{ backgroundColor: isDarkMode ? '#1C1C21' : '#FFF', borderTopWidth: 1, borderTopColor: isDarkMode ? '#333' : '#EEE' }}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, paddingTop: 12 }}>
                             {QUICK_MESSAGES.map(q => (
                                 <Pressable 
                                     key={q.id} 
-                                    onPress={() => { setChatInput(q.text); handleSendMessage(); }}
+                                    onPress={() => handleSendMessage(q.text)}
                                     style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDarkMode ? '#2C2C31' : '#F0F0F0', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, marginRight: 8, gap: 6 }}
                                 >
                                     <Ionicons name={q.icon as any} size={14} color={q.color} />
@@ -2035,18 +2123,48 @@ export default function MapScreen() {
                             ))}
                         </ScrollView>
 
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        {/* Image preview */}
+                        {chatMediaUri && (
+                            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                                <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
+                                    <Image source={{ uri: chatMediaUri }} style={{ width: 80, height: 80, borderRadius: 14 }} />
+                                    <Pressable
+                                        onPress={() => setChatMediaUri(null)}
+                                        style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: '#FF4444', alignItems: 'center', justifyContent: 'center' }}
+                                    >
+                                        <Ionicons name="close" size={13} color="#FFF" />
+                                    </Pressable>
+                                </View>
+                            </View>
+                        )}
+
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, paddingBottom: 16 }}>
+                            {/* Media button */}
+                            <Pressable
+                                onPress={handlePickChatMedia}
+                                style={({ pressed }) => ({
+                                    width: 42, height: 42, borderRadius: 21,
+                                    backgroundColor: pressed ? colors.primary + '30' : (isDarkMode ? '#2C2C31' : '#F0F0F0'),
+                                    borderWidth: 1, borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                    alignItems: 'center', justifyContent: 'center',
+                                })}
+                            >
+                                <Ionicons name="image-outline" size={20} color={colors.primary} />
+                            </Pressable>
+
+                            {/* Text input pill */}
                             <TextInput 
                                 style={{ 
                                     flex: 1, 
                                     backgroundColor: isDarkMode ? '#2C2C31' : '#F0F0F0', 
-                                    borderRadius: 20, 
+                                    borderRadius: 24, 
                                     paddingHorizontal: 20, 
-                                    paddingVertical: 12, 
+                                    paddingVertical: 10, 
                                     color: colors.text,
-                                    maxHeight: 100
+                                    maxHeight: 100,
+                                    fontSize: 15
                                 }}
-                                placeholder="Mensagem..."
+                                placeholder={`Mensagem para ${chatTarget?.name ?? ''}...`}
                                 placeholderTextColor={colors.subtext}
                                 value={chatInput}
                                 onChangeText={(txt) => {
@@ -2055,17 +2173,45 @@ export default function MapScreen() {
                                 }}
                                 multiline
                             />
+
+                            {/* Send button */}
                             <Pressable 
-                                onPress={handleSendMessage}
-                                style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 4 }}
+                                onPress={() => handleSendMessage()}
+                                style={({ pressed }) => ({
+                                    width: 48, height: 48, borderRadius: 24,
+                                    backgroundColor: (chatInput.trim() || chatMediaUri) ? colors.primary : (isDarkMode ? '#333' : '#DDD'),
+                                    alignItems: 'center', justifyContent: 'center',
+                                    opacity: pressed ? 0.7 : 1,
+                                    transform: [{ scale: pressed ? 0.92 : 1 }],
+                                    shadowColor: colors.primary,
+                                    shadowOffset: { width: 0, height: 4 },
+                                    shadowOpacity: (chatInput.trim() || chatMediaUri) ? 0.45 : 0,
+                                    shadowRadius: 10,
+                                    elevation: (chatInput.trim() || chatMediaUri) ? 6 : 0,
+                                })}
                             >
-                                <Ionicons name="send" size={20} color="#FFF" />
+                                <Ionicons name="send" size={20} color={(chatInput.trim() || chatMediaUri) ? '#FFF' : colors.subtext} style={{ marginLeft: 2 }} />
                             </Pressable>
                         </View>
                     </View>
                 </SafeAreaView>
             </Modal>
+
+            {/* Modal FullScreen Image */}
+            <Modal visible={!!fullScreenImageUri} transparent={true} animationType="fade" onRequestClose={() => setFullScreenImageUri(null)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' }}>
+                    <Pressable style={{ position: 'absolute', top: 50, right: 20, zIndex: 10, padding: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20 }} onPress={() => setFullScreenImageUri(null)}>
+                        <Ionicons name="close" size={28} color="#FFF" />
+                    </Pressable>
+                    {fullScreenImageUri && (
+                        <Image source={{ uri: fullScreenImageUri }} style={{ width: Dimensions.get('window').width, height: Dimensions.get('window').height * 0.8 }} resizeMode="contain" />
+                    )}
+                </View>
+            </Modal>
+
+            
         </View>
+        </MarkerCaptureProvider>
     );
 }
 
@@ -2097,4 +2243,5 @@ const styles = StyleSheet.create({
     // Estilos de Chat Integrado
     chatBubble: { padding: 12, borderRadius: 16, marginBottom: 8, maxWidth: '80%' },
     quickMsgBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginRight: 8, borderWidth: 1 },
+    
 });

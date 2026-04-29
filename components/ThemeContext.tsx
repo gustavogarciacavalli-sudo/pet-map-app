@@ -107,13 +107,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         }
         loadData();
 
-        // Listen for system low power mode changes
-        const subscription = Battery.addLowPowerModeListener(({ lowPowerMode }) => {
+        const subscription = Battery.addLowPowerModeListener(async ({ lowPowerMode }) => {
             if (isMounted) {
-                setBatterySaver(prev => {
-                    if (lowPowerMode && !prev) return true; // Auto-enable if system enables it
-                    return prev;
-                });
+                const settings = await getSettingsLocal();
+                setBatterySaver(settings.batterySaver || lowPowerMode);
             }
         });
 

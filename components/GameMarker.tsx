@@ -14,12 +14,19 @@ interface GameMarkerProps {
     primaryColor: string;
     avatarUri?: string | null;
     pet?: any;
+    status?: string | null;
     isMe?: boolean;
     onPress?: () => void;
 }
 
-export const GameMarkerVisual: React.FC<Partial<GameMarkerProps>> = ({ primaryColor, avatarUri, pet, name, heading, isMe }) => (
+export const GameMarkerVisual: React.FC<Partial<GameMarkerProps>> = ({ primaryColor, avatarUri, pet, name, heading, isMe, status }) => (
     <View style={styles.markerContainer}>
+        {status && (
+            <View style={styles.statusBubble}>
+                <Text style={styles.statusText} numberOfLines={1}>{status}</Text>
+                <View style={styles.statusArrow} />
+            </View>
+        )}
         <View style={[styles.avatarWrapper, { borderColor: primaryColor }]}>
             {avatarUri ? (
                 <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
@@ -55,12 +62,14 @@ export const GameMarker: React.FC<GameMarkerProps> = (props) => {
     useEffect(() => {
         if (Platform.OS === 'android') {
             const capture = async () => {
-                // Cache key baseada em propriedades que mudam o visual
-                const cacheKey = `game-marker-${id}-${props.primaryColor}-${props.avatarUri}-${props.heading}-${props.isMe}`;
+                // Arredonda o heading para múltiplos de 15 graus para reduzir snapshots desnecessários
+                const roundedHeading = Math.round((props.heading || 0) / 15) * 15;
+                const cacheKey = `game-marker-${id}-${props.primaryColor}-${props.avatarUri}-${roundedHeading}-${props.isMe}-${props.status}`;
+                
                 const uri = await registerMarker(
                     cacheKey,
-                    <GameMarkerVisual {...props} />,
-                    { width: 100, height: 120 }
+                    <GameMarkerVisual {...props} heading={roundedHeading} />,
+                    { width: 100, height: 150 }
                 );
                 if (uri) setCapturedUri(uri);
             };
@@ -69,7 +78,7 @@ export const GameMarker: React.FC<GameMarkerProps> = (props) => {
         return () => {
             if (Platform.OS === 'android') unregisterMarker(id);
         };
-    }, [id, props.primaryColor, props.avatarUri, props.heading, props.isMe]);
+    }, [id, props.primaryColor, props.avatarUri, Math.round((props.heading || 0) / 15), props.isMe, props.status]);
 
     const icon = Platform.OS === 'android' ? (capturedUri ? { uri: capturedUri } : null) : null;
 
@@ -81,7 +90,7 @@ export const GameMarker: React.FC<GameMarkerProps> = (props) => {
             anchor={{ x: 0.5, y: 1 }}
             icon={icon as any}
         >
-            {Platform.OS !== 'android' && <GameMarkerVisual {...props} />}
+            {(Platform.OS !== 'android' || !capturedUri) && <GameMarkerVisual {...props} />}
         </MapMarkerLibre>
     );
 };
@@ -91,7 +100,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'flex-end',
         width: 100,
-        height: 120,
+        height: 150,
         paddingBottom: 2, // Pequeno respiro para não cortar a pontinha
     },
     avatarWrapper: {
@@ -148,4 +157,32 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: '800',
     },
+    statusBubble: {
+        backgroundColor: '#FFF',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+        marginBottom: 6,
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 3,
+        alignItems: 'center',
+        justifyContent: 'center',
+        maxWidth: 120,
+    },
+    statusText: {
+        color: '#1C1C21',
+        fontSize: 11,
+        fontWeight: '700',
+    },
+    statusArrow: {
+        position: 'absolute',
+        bottom: -4,
+        width: 8,
+        height: 8,
+        backgroundColor: '#FFF',
+        transform: [{ rotate: '45deg' }],
+    }
 });

@@ -64,9 +64,11 @@ CREATE TABLE IF NOT EXISTS public.social_likes (
 CREATE TABLE IF NOT EXISTS public.groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    founder_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    admin_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     password TEXT,
     is_public BOOLEAN DEFAULT true,
+    description TEXT,
+    avatar TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -133,7 +135,6 @@ DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Avatar Public Access') THEN
         CREATE POLICY "Avatar Public Access" ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can upload their own avatars') THEN
-        CREATE POLICY "Users can upload their own avatars" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.role() = 'authenticated');
-    END IF;
+    DROP POLICY IF EXISTS "Users can upload their own avatars" ON storage.objects;
+    CREATE POLICY "Users can upload their own avatars" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars');
 END $$;

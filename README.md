@@ -1,143 +1,121 @@
 # WanderPet 🐾 - Social Pet Adventure
 
-WanderPet é uma plataforma de aventura gamificada onde o mundo real se torna um tabuleiro. Explore, capture tesouros, entre em clãs e interaja com outros exploradores em tempo real.
+WanderPet é uma plataforma de aventura gamificada onde o mundo real se torna um tabuleiro interativo. Explore o mapa, capture tesouros, entre em clãs e interaja com outros exploradores em tempo real com uma interface **Ultra Premium** inspirada nos melhores apps de geolocalização do mundo.
 
 ---
 
-## 🌟 Ideia Geral
-O projeto nasceu para unir a exploração física (GPS) com mecânicas de RPG social. O foco atual é a **estabilidade extrema** e uma interface **Ultra Premium**, garantindo que o app rode suavemente tanto em dispositivos de ponta quanto em modelos de entrada via Expo Go.
+## 🌟 Visão do Projeto
+O foco absoluto do WanderPet é a **estabilidade extrema** aliada a uma experiência visual de tirar o fôlego. Implementamos mecânicas de "Liquid Map Animation" (estilo Zenly/WhatsApp) e um ecossistema social centralizado no mapa para garantir imersão total.
 
 > [!IMPORTANT]
-> **ESTABILIDADE ALCANÇADA**: Esta versão foi totalmente refatorada para remover a biblioteca `react-native-reanimated`. Isso elimina qualquer crash de módulo nativo (`TurboModule`, `NullPointerException`) e garante 100% de compatibilidade com o **Expo Go (SDK 54)**.
+> **PERFORMANCE & ESTABILIDADE**: O app foi otimizado para rodar a 60 FPS estáveis no **Expo Go (SDK 54)**, utilizando renderização nativa e gerenciamento inteligente de memória para evitar crashes em dispositivos de entrada.
 
 ---
 
-## 🏗️ Arquitetura & Motores
+## 🚀 Funcionalidades Premium
+
+### 🗺️ Ecossistema de Mapa Vivo
+- **Liquid Markers**: Animações orgânicas de "pop-in" e "merge" para marcadores de usuários e pets.
+- **Phantom Rendering**: Estabilização de renderização de bitmaps no Android, evitando cortes de interface.
+- **HUD Social Integrado**: Chat, Perfis e Likes acessíveis diretamente via gaveta (Drawer) no mapa, sem trocas de tela desnecessárias.
+
+### 🎮 Gamificação Realtime
+- **Sistema de Quests**: Missões dinâmicas que recompensam a exploração física.
+- **Progressão de RPG**: Ganhe XP, suba de nível e colete moedas para personalizar seu pet.
+- **Itens & Mochila**: Gerenciamento de inventário com interface moderna e feedback tátil (Haptics).
+
+### 🤝 Conexão Social
+- **Teia Wander**: Gráfico social de recomendações para encontrar novos amigos próximos.
+- **Clãs (Grupos)**: Crie ou junte-se a grupos com proteção por senha e chat exclusivo.
+- **Inbox Centralizado**: Sistema de mensagens diretas rápido e confiável via Supabase Realtime.
+
+---
+
+## 🏗️ Arquitetura Tecnológica
+
+### 🎨 Frontend (React Native + Expo)
+- **Engine**: Expo SDK 54 com suporte a React Fabric.
+- **Mapa**: `react-native-maps` (Google Maps Engine) com patches de estabilização para Android.
+- **Estilização**: Vanilla CSS-in-JS para máxima flexibilidade e performance visual.
+- **Animações**: Interpoladores de coordenadas nativos para movimentos fluidos.
 
 ### ☁️ Backend (Supabase)
-Utilizamos o **Supabase** como nossa espinha dorsal para:
-- **Autenticação**: Login seguro e verificação em duas etapas (2FA).
-- **Realtime Database**: Sincronização de localização e mensagens instantâneas.
-- **Storage**: Armazenamento de avatares e itens.
-- **SQL Engine**: PostgreSQL para relacionamentos complexos entre usuários, clãs e conquistas.
-
-### 🗺️ Motor de Mapa (MapLibre GL)
-Diferente de soluções pesadas, usamos o **MapLibre** para garantir:
-- Renderização de mapas vetoriais em 60 FPS.
-- Câmera 3D imersiva com baixa latência.
-- Markers customizados sem dependências nativas instáveis.
-
-### 🎨 Design System
-- **Vanilla CSS-in-JS**: Estilização performática e totalmente parametrizada.
-- **Aesthetic**: Design moderno com cores vibrantes e micro-animações nativas.
+- **Auth**: Autenticação segura com suporte a verificação em duas etapas (2FA).
+- **Realtime DB**: PostgreSQL + Realtime para sincronização instantânea de posições GPS e mensagens.
+- **Storage**: Armazenamento em nuvem para avatares de usuários e fotos de perfil.
+- **Edge Functions**: Lógica de backend escalável e segura.
 
 ---
 
-## 🚀 Guia para Novos Desenvolvedores (Onboarding)
+## 🛠️ Guia de Instalação (Rápido)
 
-Caiu de paraquedas? Siga estes passos para começar em 5 minutos:
-
-### 1. Setup Inicial
+### 1. Clonar e Instalar
 ```bash
-# Clone o repositório
 git clone https://github.com/gustavogarciacavalli-sudo/pet-map-app.git
 cd pet-map-app
-
-# Instale as dependências
 npm install
 ```
 
-### 2. Configuração de Ambiente
-1. Certifique-se de configurar as chaves do Supabase em `services/supabaseConfig.ts`.
-2. Para o banco de dados, execute o script SQL contido na seção "Configuração SQL" abaixo no seu editor do Supabase.
+### 2. Configuração
+1. Configure as credenciais do Supabase em `services/supabaseConfig.ts`.
+2. Execute o script `supabase_setup.sql` no SQL Editor do seu dashboard Supabase.
 
-### 3. Rodando o Projeto
+### 3. Executar
 ```bash
-# Para development build ou Expo Go (Recomendado)
+# Iniciar com Expo Go (Recomendado)
 npx expo start -c
 
-# Para Android Nativo
+# Iniciar Android Nativo
 npx react-native run-android
-
-# Para iOS Nativo
-npx react-native run-ios
 ```
 
 ---
 
-## 🌿 Regras de Colaboração (Git Flow)
+## 🌿 Workflow de Colaboração (Git Flow)
 
-Para manter a sanidade do projeto, seguimos estas regras:
+Seguimos um padrão rigoroso para garantir a integridade do código:
 
-- **Branch Principal**: `develop` (Tudo o que está pronto para teste).
-- **Novas Tarefas**: Crie branches a partir da `develop` com o padrão `feature/nome-da-tarefa`.
-- **Commits**: Use mensagens semânticas (Ex: `feat: adiciona mapa`, `fix: corrige login`).
+- **Branch de Desenvolvimento**: `develop` (Base para todas as novas features).
+- **Branch de Feature**: `feature/nome-da-tarefa` (Sempre criada a partir da `develop`).
+- **Commits Semânticos**: Ex: `feat: add liquid markers`, `fix: android map clipping`.
 
-### Fluxo Diário:
-1. `git checkout develop` -> `git pull origin develop`
-2. `git checkout -b feature/minha-tarefa`
-3. Codar e Commitar: `git add .` -> `git commit -m "sua mensagem"`
-4. `git push origin feature/minha-tarefa`
-5. Abrir Pull Request: Una sua branch com a `develop` no GitHub.
-
----
-
-## 🛠️ Log de Atualizações (Recent Updates)
-
-### [24/04/2026] - Refinamento de UX & Navegação Premium
-- **Navegação Fluida**: Adição de botões "Voltar" (`arrow-back`) em todas as telas secundárias (**Loja**, **Missões**, **Social**), eliminando becos sem saída na navegação.
-- **Mochila 2.0**:
-    - Novo ícone de acesso (`bag-handle-outline`) no HUD.
-    - Modal revitalizado com header informativo e botão de fechar dedicado.
-    - Implementação de *Dismiss on Backdrop Tap* (fechar ao tocar fora).
-- **Acessibilidade Mobile**:
-    - Ajuste de área de toque (`SHEET_MIN`) no Bottom Sheet para compatibilidade total com gestos de iPhone.
-    - Implementação de Scroll Horizontal nos botões de ação do mapa para evitar cortes de interface em telas pequenas.
-- **Estabilidade Visual**:
-    - Correção de mapeamento de ícones (Ionicons/MaterialCommunityIcons).
-    - Otimização de cache do Expo para carregamento instantâneo de assets.
+### Ciclo de Contribuição:
+1. `git checkout develop` && `git pull`
+2. `git checkout -b feature/sua-feature`
+3. Codifique e realize commits granulares.
+4. `git push origin feature/sua-feature`
+5. Abra um **Pull Request** para a `develop`.
 
 ---
 
-## 📋 Lista de Tarefas (Roadmap de Verificação)
+## 📋 Roadmap de Verificação (Status Atual)
 
-- [ ] Verificar se foto de perfil continua no banco de dados
-- [ ] Verificar integridade do Wander-ID
-- [ ] Verificar rastreamento de local atual (GPS Throttling)
-- [ ] Verificar banco de dados: Expedição da Semana
-- [ ] Verificar permanência de moedas e EXP (Cloud Sync)
-- [ ] Verificar evolução de medalhas e permanência de missões
-- [x] Arrumar imagem do Modo Fantasma (Ícone 3D Premium)
-- [ ] Verificar sistema de alterar senha e 2FA
-- [ ] Implementar/Colocar bots para testar amigos
-- [ ] Implementar Teia Wander (Social Graph)
-- [ ] Implementar Inbox (Sistema de Mensagens Diretas)
+- [x] **Integração Social no Mapa**: Chat e Perfis unificados no HUD.
+- [x] **Estabilização Phantom**: Correção de clipping de marcadores no Android.
+- [x] **Animações Liquid**: Efeito de "merge" orgânico nos markers.
+- [ ] **Teia Wander**: Expansão do algoritmo de recomendações.
+- [ ] **Inbox 2.0**: Refinamento da persistência de mensagens offline.
+- [ ] **Sistema de Notificações**: Implementação final dos push tokens.
 
 ---
 
-## ⚙️ Configuração SQL (Supabase)
+## ⚙️ Esquema de Banco de Dados (Resumo)
 
-Execute este esquema no SQL Editor do Supabase:
+O WanderPet utiliza um esquema relacional robusto. Para ver o script completo, acesse [supabase_setup.sql](./supabase_setup.sql).
 
 ```sql
--- Profiles, Groups, Messages e Locations
--- (Referência rápida, o script completo está em supabase_setup.sql)
+-- Exemplo: Estrutura de Perfis
 CREATE TABLE public.profiles (
-  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
+  id UUID REFERENCES auth.users PRIMARY KEY,
   name TEXT,
-  email TEXT,
   wander_id TEXT UNIQUE,
   avatar TEXT,
-  species TEXT DEFAULT 'bunny',
   coins INTEGER DEFAULT 0,
   level INTEGER DEFAULT 1,
-  xp INTEGER DEFAULT 0,
-  two_factor_pin TEXT,
-  security_question TEXT,
-  security_answer TEXT,
-  claimed_quests TEXT[] DEFAULT '{}'::TEXT[]
+  xp INTEGER DEFAULT 0
 );
 ```
 
 ---
-*Desenvolvido com ❤️ pela equipe WanderPet. Estabilidade em primeiro lugar.*
+*Desenvolvido com ❤️ pela equipe WanderPet. Transformando cada passo em uma nova aventura.*
+

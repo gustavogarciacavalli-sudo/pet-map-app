@@ -69,7 +69,7 @@ export const MergedMarker: React.FC<MergedMarkerProps> = (props) => {
             anchor={{ x: 0.5, y: 0.5 }}
             icon={icon as any}
         >
-            {Platform.OS !== 'android' && <MergedMarkerVisual images={props.imageUris} color={props.primaryColor} />}
+            {(Platform.OS !== 'android' || !capturedUri) && <MergedMarkerVisual images={props.imageUris} color={props.primaryColor} />}
         </MapMarkerLibre>
     );
 };

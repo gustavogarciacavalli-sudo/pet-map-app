@@ -7,7 +7,6 @@ import { getPetLocal, LocalPet, getCurrentUserLocal, LocalUser, getCoinsLocal, g
 import { AuthService } from '../services/AuthService';
 import { NotificationService } from '../services/NotificationService';
 import { useToast } from './ToastProvider';
-import { Leaderboard } from './Leaderboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MAIN_QUESTS, DAILY_QUESTS, WEEKLY_QUESTS, MONTHLY_QUESTS } from '../data/questsData';
 import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
@@ -70,6 +69,16 @@ export function ProfileView() {
     const [levelData, setLevelData] = useState({ xp: 0, level: 1 });
     const [distance, setDistance] = useState(0);
     const [weeklyActivity, setWeeklyActivity] = useState<{date: string, distance: number}[]>([]);
+    const [currentStatus, setCurrentStatus] = useState<string | null>(null);
+
+    const STATUS_PRESETS = [
+        { label: 'Passeando!', emoji: '🐕' },
+        { label: 'Procurando tesouros!', emoji: '💎' },
+        { label: 'Bora sincronizar?', emoji: '🤝' },
+        { label: 'Em missão!', emoji: '⚔️' },
+        { label: 'Dando um tempo', emoji: '☕' },
+        { label: 'Ocupado', emoji: '📴' },
+    ];
     
     // Estados para Medalhas
     const [medals, setMedals] = useState({ caminhada: 0, social: 0, clas: 0, colecao: 0 });
@@ -235,7 +244,23 @@ export function ProfileView() {
         setTempName(p?.name || '');
         setTempSpecies(p?.species || 'bunny');
         setTempImageUri(p?.customImageUri || null);
+        
+        // Carregar status se estiver no perfil (poderia estar no localDatabase ou no state global)
+        // Por enquanto vamos usar o DeviceEventEmitter para sincronizar com o index.tsx
+        DeviceEventEmitter.emit('requestCurrentStatus');
     }
+
+    React.useEffect(() => {
+        const sub = DeviceEventEmitter.addListener('currentStatusReport', (status) => {
+            setCurrentStatus(status);
+        });
+        return () => sub.remove();
+    }, []);
+
+    const handleStatusSelect = (status: string | null) => {
+        setCurrentStatus(status);
+        DeviceEventEmitter.emit('statusChanged', status);
+    };
 
     const handleToggleSetting = async (key: keyof UserSettings, value: boolean) => {
         // Lógica especial para notificações
@@ -276,8 +301,7 @@ export function ProfileView() {
                 showToast({ 
                     message: "Modo Fantasma Ativado!", 
                     type: 'success', 
-                    icon: 'eye-off-outline',
-                    image: require('../assets/images/ghost-icon.png')
+                    icon: 'eye-off-outline'
                 });
             } else {
                 showToast({ 
@@ -381,6 +405,7 @@ export function ProfileView() {
     const [tempName, setTempName] = useState('');
     const [tempSpecies, setTempSpecies] = useState('bunny');
     const [tempImageUri, setTempImageUri] = useState<string | null>(null);
+    const [customStatusInput, setCustomStatusInput] = useState('');
 
     // Estados para o Diário de Expedição
     const [isDayModalVisible, setIsDayModalVisible] = useState(false);
@@ -557,6 +582,53 @@ export function ProfileView() {
                             </Pressable>
                         </View>
                         <Text style={[styles.idValue, { color: colors.primary }]}>{user?.wanderId || '#WP-????'}</Text>
+                    </View>
+
+                    {/* Status Picker integrado no Perfil */}
+                    <View style={styles.profileStatusSection}>
+                        <Text style={[styles.statusLabel, { color: colors.subtext }]}>MEU STATUS (Dura 24h)</Text>
+                        
+                        <View style={styles.customStatusRow}>
+                            <TextInput
+                                style={[styles.customStatusInput, { backgroundColor: isDarkMode ? '#1C1C21' : '#F5F5F7', color: colors.text, borderColor: colors.border }]}
+                                placeholder="Status personalizado..."
+                                placeholderTextColor={colors.subtext}
+                                value={customStatusInput}
+                                onChangeText={setCustomStatusInput}
+                                maxLength={30}
+                            />
+                            <Pressable 
+                                style={[styles.applyStatusBtn, { backgroundColor: colors.primary }]}
+                                onPress={() => {
+                                    handleStatusSelect(customStatusInput.trim() || null);
+                                    setCustomStatusInput('');
+                                }}
+                            >
+                                <Ionicons name="checkmark" size={20} color="#FFF" />
+                            </Pressable>
+                        </View>
+
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statusScroll}>
+                            <Pressable 
+                                style={[styles.statusPill, { borderColor: (currentStatus === null && !customStatusInput) ? colors.primary : colors.border, backgroundColor: (currentStatus === null && !customStatusInput) ? colors.primary + '20' : 'transparent' }]}
+                                onPress={() => setCustomStatusInput('')}
+                            >
+                                <Text style={[styles.statusPillText, { color: (currentStatus === null && !customStatusInput) ? colors.primary : colors.subtext }]}>Nenhum</Text>
+                            </Pressable>
+                            {STATUS_PRESETS.map((p, idx) => {
+                                const statusStr = `${p.emoji} ${p.label}`;
+                                const isSelected = customStatusInput === statusStr || (currentStatus === statusStr && !customStatusInput);
+                                return (
+                                    <Pressable 
+                                        key={idx}
+                                        style={[styles.statusPill, { borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary + '20' : 'transparent' }]}
+                                        onPress={() => setCustomStatusInput(statusStr)}
+                                    >
+                                        <Text style={[styles.statusPillText, { color: isSelected ? colors.primary : colors.text }]}>{p.emoji} {p.label}</Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </ScrollView>
                     </View>
                 </View>
 
@@ -818,7 +890,6 @@ export function ProfileView() {
                     </Animated.View>
                 </View>
 
-                <Leaderboard />
 
                 <Text style={[styles.version, { color: colors.subtext }]}>WanderPet v2.0.0</Text>
             </ScrollView>
@@ -1217,5 +1288,14 @@ const styles = StyleSheet.create({
     medalsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, gap: 4 },
     medalItem: { alignItems: 'center', flex: 1 },
     medalMolde: { width: 48, height: 48, borderRadius: 16, borderWidth: 2, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-    medalLabel: { fontSize: 9, fontWeight: '800', textAlign: 'center', flexShrink: 1, letterSpacing: -0.5 }
+    medalLabel: { fontSize: 9, fontWeight: '800', textAlign: 'center', flexShrink: 1, letterSpacing: -0.5 },
+    // ─── Profile Status ───
+    profileStatusSection: { width: '100%', marginTop: 16 },
+    statusLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1.2, marginBottom: 10 },
+    statusScroll: { paddingRight: 20 },
+    statusPill: { paddingHorizontal: 16, height: 38, borderRadius: 19, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+    statusPillText: { fontSize: 13, fontWeight: '700' },
+    customStatusRow: { flexDirection: 'row', gap: 10, marginBottom: 14, width: '100%' },
+    customStatusInput: { flex: 1, height: 44, borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, fontSize: 14, fontWeight: '600' },
+    applyStatusBtn: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 }
 });

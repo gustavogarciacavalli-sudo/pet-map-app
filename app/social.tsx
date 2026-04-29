@@ -1,9 +1,10 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as Battery from 'expo-battery';
+import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View, Animated } from 'react-native';
+import { Alert, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View, Animated, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PetPreview } from '../components/PetPreview';
 import { ProfileView } from '../components/ProfileView';
@@ -20,14 +21,15 @@ import { ChatMessage, FriendRequest } from '../types/social';
 import { AuthService } from '../services/AuthService';
 import { supabase } from '../services/supabaseConfig';
 import { NearbyWeb } from '../components/NearbyWeb';
+import { Leaderboard } from '../components/Leaderboard';
 
 export default function SocialScreen() {
     const { colors, isDarkMode } = useTheme();
     const router = useRouter();
     const { tab } = useLocalSearchParams<{ tab?: string }>();
     const [activeTopTab, setActiveTopTab] = useState<'perfil' | 'social' | 'clas'>(tab === 'perfil' ? 'perfil' : 'social');
-    const [activeSocialSubTab, setActiveSocialSubTab] = useState<'amigos' | 'recomendados' | 'inbox'>('amigos');
-    const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar'>('meus');
+    const [activeSocialSubTab, setActiveSocialSubTab] = useState<'recomendados' | 'inbox'>('recomendados');
+    const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar' | 'ranking'>('meus');
 
     const [circles, setCircles] = useState<any[]>([]);
     const [selectedCircleId, setSelectedCircleId] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export default function SocialScreen() {
     const [isLoadingNearby, setIsLoadingNearby] = useState(false);
     const [recommendationLinks, setRecommendationLinks] = useState<any[]>([]);
     const [clansSearch, setClansSearch] = useState('');
+    const [sentRequestIds, setSentRequestIds] = useState<string[]>([]);
 
     const [isChatVisible, setIsChatVisible] = useState(false);
     const [chatTarget, setChatTarget] = useState<{ id: string, name: string, avatar?: string | null } | null>(null);
@@ -57,6 +60,12 @@ export default function SocialScreen() {
     const chatSubscription = useRef<any>(null);
 
     const [isAvatarZoomVisible, setIsAvatarZoomVisible] = useState(false);
+    const [activeClanDetailTab, setActiveClanDetailTab] = useState<'membros' | 'chat'>('membros');
+    const [clanChatInput, setClanChatInput] = useState('');
+    const [clanChatMessages, setClanChatMessages] = useState<Record<string, ChatMessage[]>>({});
+    const clanChatScrollRef = useRef<ScrollView>(null);
+    const [chatMediaUri, setChatMediaUri] = useState<string | null>(null);
+    const [clanChatMediaUri, setClanChatMediaUri] = useState<string | null>(null);
     const [isMemberCardVisible, setIsMemberCardVisible] = useState(false);
     const [activePreviewMember, setActivePreviewMember] = useState<any>(null);
     const [likedIds, setLikedIds] = useState<string[]>([]);
@@ -67,6 +76,9 @@ export default function SocialScreen() {
     const [isGhostMode, setIsGhostMode] = useState(false);
     const [user, setUser] = useState<any>(null);
     const [pet, setPet] = useState<LocalPet | null>(null);
+    const [toastMsg, setToastMsg] = useState<string | null>(null);
+    const [toastType, setToastType] = useState<'success' | 'decline'>('success');
+    const toastAnim = useRef(new Animated.Value(0)).current;
 
     const loadLikes = async () => {
         const likes = await getLikesLocal();
@@ -88,12 +100,15 @@ export default function SocialScreen() {
             const friends = await AuthService.getFriendsCloud(loggedUser.id);
             setFriendIds(friends);
 
-            const cloudGroups = await AuthService.getGroups();
+            const cloudGroups = await AuthService.getGroups(loggedUser.id);
             const formattedCircles = cloudGroups.map((g: any) => ({
                 id: g.id,
                 name: g.name,
                 isPublic: g.is_public,
                 password: g.password,
+                adminId: g.admin_id,
+                description: g.description,
+                avatar: g.avatar,
                 members: g.group_members.map((gm: any) => gm.profiles)
             }));
             setCircles(formattedCircles);
@@ -156,21 +171,43 @@ export default function SocialScreen() {
     };
 
     const handleSendRequest = async (targetUser: any) => {
+        if (sentRequestIds.includes(targetUser.id)) return;
         try {
             const me = await getCurrentUserLocal();
             if (!me) return;
+            setSentRequestIds(prev => [...prev, targetUser.id]);
             await AuthService.addFriendCloud(me.id, targetUser.id);
-            Alert.alert('Sucesso', `Solicitação enviada para ${targetUser.name || 'Explorador'}!`);
+            showToast(`Solicitação enviada para ${targetUser.name || 'Explorador'}! 🚀`, 'success');
             loadSocialData();
         } catch (e) {
-            Alert.alert('Erro', 'Não foi possível enviar a solicitação.');
+            setSentRequestIds(prev => prev.filter(id => id !== targetUser.id));
+            showToast('Erro ao enviar solicitação', 'decline');
         }
+    };
+
+    const showToast = (msg: string, type: 'success' | 'decline') => {
+        setToastMsg(msg);
+        setToastType(type);
+        toastAnim.setValue(0);
+        Animated.sequence([
+            Animated.spring(toastAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 8 }),
+            Animated.delay(1800),
+            Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true })
+        ]).start(() => setToastMsg(null));
     };
 
     const handleRespondRequest = async (requestId: string, status: 'accepted' | 'declined') => {
         try {
+            // Optimistic: remove from local state immediately
+            setFriendRequests(prev => prev.filter(r => r.id !== requestId));
+            
             await AuthService.respondFriendRequestCloud(requestId, status);
-            Alert.alert(status === 'accepted' ? 'Aceito!' : 'Recusado');
+            if (status === 'accepted') {
+                showToast('Amizade aceita! 🎉', 'success');
+            } else {
+                showToast('Solicitação recusada', 'decline');
+            }
+            // Refresh all social data (friends list, requests, etc.)
             loadSocialData();
         } catch (e) {}
     };
@@ -253,18 +290,69 @@ export default function SocialScreen() {
         } catch (e) {}
     };
 
+    const handleShareProfile = async () => {
+        try {
+            const me = await getCurrentUserLocal();
+            if (!me) return;
+            const wanderId = me.wanderId || '#WP-???';
+            const deepLink = `wanderpet://add-friend/${me.id}`;
+            const message = `🐾 Me adicione no WanderPet!\n\nMeu Wander-ID: ${wanderId}\n\nLink direto: ${deepLink}\n\nBaixe o app e explore comigo!`;
+            if (Platform.OS === 'web') {
+                if (navigator.share) await navigator.share({ title: 'Adicione-me no WanderPet', text: message });
+                else {
+                    await navigator.clipboard.writeText(message);
+                    showToast('Link copiado! 📋', 'success');
+                }
+            } else {
+                await Share.share({ message });
+            }
+            showToast('Convite compartilhado! 🎉', 'success');
+        } catch (e) {}
+    };
+
+    const handleShareClan = async (clan: any) => {
+        try {
+            const me = await getCurrentUserLocal();
+            if (!me) return;
+            const deepLink = `wanderpet://join-clan/${clan.id}`;
+            const message = `⚔️ Entre no clã "${clan.name}" no WanderPet!\n\n${clan.members?.length || 0} membros ativos\n\nLink direto: ${deepLink}\n\nVenha explorar com a gente!`;
+            
+            // Auto-join the user if not already a member
+            const isMember = clan.members?.some((m: any) => m.id === me.id);
+            if (!isMember) {
+                await handleJoinCircle(clan.id);
+            }
+
+            if (Platform.OS === 'web') {
+                if (navigator.share) await navigator.share({ title: `Clã ${clan.name}`, text: message });
+                else {
+                    await navigator.clipboard.writeText(message);
+                    showToast('Link do clã copiado! 📋', 'success');
+                    return;
+                }
+            } else {
+                await Share.share({ message });
+            }
+            showToast(`Convite do clã compartilhado! ⚔️`, 'success');
+        } catch (e) {}
+    };
+
     const handleCreateCircle = async () => {
         if (!circleName.trim()) return;
-        const user = await getCurrentUserLocal();
-        if (!user) return;
+        const u = await getCurrentUserLocal();
+        if (!u) return;
         try {
-            await AuthService.createGroup(circleName.trim(), user.id, newClanPassword || undefined, isPublicNewClan);
+            await AuthService.createGroup(circleName.trim(), u.id, newClanPassword || undefined, isPublicNewClan);
             setCircleName('');
             setNewClanPassword('');
             setIsPublicNewClan(false);
             setIsCreateModalVisible(false);
-            loadSocialData();
-        } catch (e) {}
+            showToast('Clã criado com sucesso! ⚔️', 'success');
+            await loadSocialData();
+            setActiveClansSubTab('meus');
+        } catch (e) {
+            showToast('Erro ao criar clã', 'decline');
+        }
     };
 
     const handleVerifyPassword = () => {
@@ -272,19 +360,64 @@ export default function SocialScreen() {
         if (passAttempt === activeCircle.password) {
             setIsPassModalVisible(false);
             setPassAttempt('');
-            const isMember = activeCircle.members.some((m: any) => m.id === 'me');
+            const isMember = activeCircle.members.some((m: any) => m.id === user?.id);
             if (!isMember) handleJoinCircle(activeCircle.id);
             setIsDetailModalVisible(true);
-        } else Alert.alert('Senha Incorreta');
+        } else {
+            showToast('Senha incorreta', 'decline');
+        }
     };
 
     const handleJoinCircle = async (circleId: string) => {
-        const user = await getCurrentUserLocal();
-        if (!user) return;
+        const u = await getCurrentUserLocal();
+        if (!u) return;
         try {
-            await AuthService.joinGroup(circleId, user.id);
-            loadSocialData();
+            await AuthService.joinGroup(circleId, u.id);
+            await loadSocialData();
+            setActiveClansSubTab('meus');
         } catch (e) {}
+    };
+
+    const handleSendClanMessage = async () => {
+        if (!clanChatInput.trim() || !activeCircle) return;
+        const u = await getCurrentUserLocal();
+        if (!u) return;
+        
+        const newMessage: ChatMessage = {
+            id: `msg-${Date.now()}`,
+            senderId: 'me',
+            recipientId: activeCircle.id,
+            text: clanChatInput.trim(),
+            timestamp: Date.now() as any
+        };
+
+        setClanChatMessages(prev => {
+            const messages = prev[activeCircle.id] || [];
+            return {
+                ...prev,
+                [activeCircle.id]: [...messages, newMessage]
+            };
+        });
+        
+        setClanChatInput('');
+        setTimeout(() => clanChatScrollRef.current?.scrollToEnd(), 100);
+    };
+
+    const handlePickMedia = async (target: 'chat' | 'clan') => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão necessária', 'Permita o acesso à galeria para enviar fotos.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: false,
+            quality: 0.8,
+        });
+        if (!result.canceled && result.assets[0]?.uri) {
+            if (target === 'chat') setChatMediaUri(result.assets[0].uri);
+            else setClanChatMediaUri(result.assets[0].uri);
+        }
     };
 
     useEffect(() => {
@@ -323,7 +456,7 @@ export default function SocialScreen() {
                         <Text style={[styles.topTabText, activeTopTab === 'perfil' ? { color: '#FFF' } : { color: colors.subtext }]}>Meu Perfil</Text>
                     </Pressable>
                     <Pressable onPress={() => setActiveTopTab('social')} style={[styles.topTabBtn, activeTopTab === 'social' && { backgroundColor: colors.primary }]}>
-                        <Text style={[styles.topTabText, activeTopTab === 'social' ? { color: '#FFF' } : { color: colors.subtext }]}>Social</Text>
+                        <Text style={[styles.topTabText, activeTopTab === 'social' ? { color: '#FFF' } : { color: colors.subtext }]}>Adicionar</Text>
                     </Pressable>
                     <Pressable onPress={() => setActiveTopTab('clas')} style={[styles.topTabBtn, activeTopTab === 'clas' && { backgroundColor: colors.primary }]}>
                         <Text style={[styles.topTabText, activeTopTab === 'clas' ? { color: '#FFF' } : { color: colors.subtext }]}>Clãs</Text>
@@ -339,7 +472,7 @@ export default function SocialScreen() {
                         <Ionicons name="search" size={20} color={colors.subtext} style={{ marginLeft: 16 }} />
                         <TextInput
                             style={[styles.searchInput, { color: colors.text, outlineStyle: 'none' } as any]}
-                            placeholder="Buscar amigos..."
+                            placeholder={activeSocialSubTab === 'recomendados' ? 'Descobrir exploradores...' : 'Buscar solicitações...'}
                             placeholderTextColor={colors.subtext}
                             value={socialSearch}
                             onChangeText={setSocialSearch}
@@ -350,47 +483,261 @@ export default function SocialScreen() {
                     </View>
 
                     <View style={styles.subTabBar}>
-                        <Pressable onPress={() => setActiveSocialSubTab('amigos')} style={[styles.subTabBtn, activeSocialSubTab === 'amigos' && { backgroundColor: colors.accent }]}>
-                            <Text style={[styles.subTabText, { color: activeSocialSubTab === 'amigos' ? colors.primary : colors.subtext }]}>Amigos</Text>
-                        </Pressable>
                         <Pressable onPress={() => setActiveSocialSubTab('recomendados')} style={[styles.subTabBtn, activeSocialSubTab === 'recomendados' && { backgroundColor: colors.accent }]}>
-                            <Text style={[styles.subTabText, { color: activeSocialSubTab === 'recomendados' ? colors.primary : colors.subtext }]}>Teia Wander</Text>
+                            <Text style={[styles.subTabText, { color: activeSocialSubTab === 'recomendados' ? colors.primary : colors.subtext }]}>Recomendados</Text>
                         </Pressable>
-                        <Pressable onPress={() => setActiveSocialSubTab('inbox')} style={[styles.subTabBtn, activeSocialSubTab === 'inbox' && { backgroundColor: colors.accent }]}>
+                        <Pressable onPress={() => setActiveSocialSubTab('inbox')} style={[styles.subTabBtn, activeSocialSubTab === 'inbox' && { backgroundColor: colors.accent, position: 'relative' }]}>
                             <Text style={[styles.subTabText, { color: activeSocialSubTab === 'inbox' ? colors.primary : colors.subtext }]}>Inbox</Text>
+                            {friendRequests.some(r => r.toId === 'me' && r.status === 'pending') && (
+                                <View style={{ position: 'absolute', top: 2, right: 4, width: 8, height: 8, borderRadius: 4, backgroundColor: '#E74C3C' }} />
+                            )}
                         </Pressable>
                     </View>
 
-                    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.membersSection}>
-                        {[...allMembersMap.values()]
-                            .filter(m => m.id !== user?.id)
-                            .filter(m => m.name?.toLowerCase().includes(socialSearch.toLowerCase()))
-                            .map(member => (
-                                <View key={member.id} style={[styles.memberItem, { borderColor: colors.border }]}>
-                                    <View style={[styles.memberAvatar, { backgroundColor: colors.accent }]}>
-                                        <PetPreview species={member.species || 'bunny'} size={40} customImageUri={member.avatar} />
-                                        <View style={[styles.presenceCircle, { backgroundColor: member.online ? '#4CAF50' : '#888', borderColor: colors.background }]} />
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+                        {activeSocialSubTab === 'recomendados' ? (
+                            <View style={styles.membersSection}>
+                                {/* Card de Compartilhar Perfil */}
+                                <Pressable
+                                    onPress={handleShareProfile}
+                                    style={({ pressed }) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: 14,
+                                        backgroundColor: pressed ? colors.primary + '20' : colors.primary + '10',
+                                        borderWidth: 1,
+                                        borderColor: colors.primary + '30',
+                                        borderRadius: 18,
+                                        paddingHorizontal: 18,
+                                        paddingVertical: 14,
+                                        marginBottom: 20
+                                    })}
+                                >
+                                    <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.primary + '20', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Ionicons name="share-social" size={22} color={colors.primary} />
                                     </View>
-                                    <View style={styles.memberInfo}>
-                                        <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
-                                        <Text style={[styles.memberSince, { color: colors.subtext }]}>Wander-ID: #{member.wander_id}</Text>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14 }}>Compartilhar meu perfil</Text>
+                                        <Text style={{ color: colors.subtext, fontSize: 11, marginTop: 2 }}>Envie seu link e vire amigo automaticamente</Text>
                                     </View>
-                                    <View style={{ flexDirection: 'row', gap: 12 }}>
-                                        <Pressable onPress={() => handleOpenChat(member.id, member.name, member.avatar)}>
-                                            <Ionicons name="chatbubble-outline" size={22} color={colors.primary} />
-                                        </Pressable>
-                                        <Pressable onPress={() => handleToggleLike(member.id)}>
-                                            <Ionicons name={likedIds.includes(member.id) ? "heart" : "heart-outline"} size={22} color="#E74C3C" />
-                                        </Pressable>
+                                    <Ionicons name="arrow-forward-circle" size={24} color={colors.primary} />
+                                </Pressable>
+
+                                {isLoadingNearby ? (
+                                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 40 }}>
+                                        <Text style={{ color: colors.subtext }}>Buscando conexões...</Text>
                                     </View>
-                                </View>
-                            ))}
+                                ) : nearbyExplorers.length > 0 ? (
+                                    nearbyExplorers
+                                        .filter(m => {
+                                            if (!m) return false;
+                                            const q = socialSearch.toLowerCase();
+                                            const nameMatch = m.name?.toLowerCase().includes(q);
+                                            const idMatch = m.wander_id?.toLowerCase().includes(q) || m.id?.toLowerCase().includes(q);
+                                            return nameMatch || idMatch;
+                                        })
+                                        .map(member => {
+                                            if (!member) return null;
+                                            return (
+                                                <View key={member.id} style={[styles.memberItem, { borderColor: colors.border }]}>
+                                                    <View style={[styles.memberAvatar, { backgroundColor: colors.accent }]}>
+                                                        {member?.species ? (
+                                                            <PetPreview species={member.species} size={40} customImageUri={member.avatar} />
+                                                        ) : (
+                                                            <Ionicons name="person" size={22} color={colors.primary} />
+                                                        )}
+                                                    </View>
+                                                    <View style={styles.memberInfo}>
+                                                        <Text style={[styles.memberName, { color: colors.text }]}>{member?.name}</Text>
+                                                        <Text style={[styles.memberSince, { color: colors.subtext }]}>Wander-ID: {member?.wander_id}</Text>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.primary + '18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                                                <Ionicons name="trending-up" size={10} color={colors.primary} />
+                                                                <Text style={{ fontSize: 10, fontWeight: '800', color: colors.primary }}>Lv {member.level || 1}</Text>
+                                                            </View>
+                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                                                <Ionicons name="paw" size={10} color={colors.subtext} />
+                                                                <Text style={{ fontSize: 10, fontWeight: '700', color: colors.subtext }}>{member.species || 'bunny'}</Text>
+                                                            </View>
+                                                        </View>
+                                                    </View>
+                                                    <Pressable
+                                                        onPress={() => handleSendRequest(member)}
+                                                        disabled={sentRequestIds.includes(member.id)}
+                                                        style={({ pressed }) => ({
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            gap: 6,
+                                                            backgroundColor: sentRequestIds.includes(member.id)
+                                                                ? '#4ADE8022'
+                                                                : pressed
+                                                                    ? colors.primary + '90'
+                                                                    : colors.primary,
+                                                            paddingHorizontal: 14,
+                                                            paddingVertical: 10,
+                                                            borderRadius: 14
+                                                        })}
+                                                    >
+                                                        <Ionicons
+                                                            name={sentRequestIds.includes(member.id) ? 'checkmark-circle' : 'person-add'}
+                                                            size={16}
+                                                            color={sentRequestIds.includes(member.id) ? '#4ADE80' : '#FFF'}
+                                                        />
+                                                        <Text style={{
+                                                            color: sentRequestIds.includes(member.id) ? '#4ADE80' : '#FFF',
+                                                            fontWeight: '800',
+                                                            fontSize: 11
+                                                        }}>
+                                                            {sentRequestIds.includes(member.id) ? 'Enviado' : 'Adicionar'}
+                                                        </Text>
+                                                    </Pressable>
+                                                </View>
+                                            );
+                                        })
+                                ) : (
+                                    <View style={{ justifyContent: 'center', alignItems: 'center', padding: 40 }}>
+                                        <Text style={{ fontSize: 40, marginBottom: 20 }}>🔭</Text>
+                                        <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>O horizonte está vazio...</Text>
+                                        <Text style={{ color: colors.subtext, marginTop: 8, textAlign: 'center' }}>
+                                            Não encontramos outros exploradores por perto neste momento.
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                        ) : (
+                            <View style={{ flex: 1, paddingTop: 16 }}>
+                                {friendRequests.filter(r => r.toId === 'me' && r.status === 'pending')
+                                    .filter(r => {
+                                        if (!socialSearch.trim()) return true;
+                                        const q = socialSearch.toLowerCase();
+                                        return r.fromName?.toLowerCase().includes(q) || r.fromId?.toLowerCase().includes(q);
+                                    })
+                                    .map(req => (
+                                    <View key={req.id} style={[styles.memberItem, { borderColor: colors.border }]}>
+                                        <View style={[styles.memberAvatar, { backgroundColor: colors.accent }]}>
+                                            {req.fromAvatar ? (
+                                                <PetPreview species={'bunny'} size={40} customImageUri={req.fromAvatar} />
+                                            ) : (
+                                                <Ionicons name="person" size={22} color={colors.primary} />
+                                            )}
+                                        </View>
+                                        <View style={styles.memberInfo}>
+                                            <Text style={[styles.memberName, { color: colors.text }]}>{req.fromName}</Text>
+                                            <Text style={[styles.memberSince, { color: colors.subtext }]}>Quer ser seu amigo!</Text>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                                            <Pressable
+                                                onPress={() => handleRespondRequest(req.id, 'accepted')}
+                                                style={({ pressed }) => ({
+                                                    backgroundColor: pressed ? colors.primary + '44' : colors.primary + '22',
+                                                    paddingHorizontal: 14,
+                                                    paddingVertical: 10,
+                                                    borderRadius: 14,
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    gap: 6
+                                                })}
+                                            >
+                                                <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                                                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Aceitar</Text>
+                                            </Pressable>
+                                            <Pressable
+                                                onPress={() => handleRespondRequest(req.id, 'declined')}
+                                                style={({ pressed }) => ({
+                                                    backgroundColor: pressed ? '#E74C3C44' : '#E74C3C15',
+                                                    paddingHorizontal: 14,
+                                                    paddingVertical: 10,
+                                                    borderRadius: 14,
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    gap: 6
+                                                })}
+                                            >
+                                                <Ionicons name="close-circle" size={18} color="#E74C3C" />
+                                            </Pressable>
+                                        </View>
+                                    </View>
+                                ))}
+                                {friendRequests.filter(r => r.toId === 'me' && r.status === 'pending').length === 0 && (
+                                    <View style={{ alignItems: 'center', paddingHorizontal: 40 }}>
+                                        <Text style={{ fontSize: 40, marginBottom: 20 }}>🌵</Text>
+                                        <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>Silêncio absoluto por aqui...</Text>
+                                        <Text style={{ color: colors.subtext, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+                                            Até os grilos foram embora. Que tal quebrar o gelo e mandar uma solicitação para alguém?
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                        )}
                     </ScrollView>
                 </View>
             )}
 
+            {/* Toast Overlay */}
+            {toastMsg && (
+                <Animated.View style={{
+                    position: 'absolute',
+                    top: 80,
+                    left: 20,
+                    right: 20,
+                    alignItems: 'center',
+                    zIndex: 9999,
+                    opacity: toastAnim,
+                    transform: [{
+                        translateY: toastAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [-30, 0]
+                        })
+                    }, {
+                        scale: toastAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.8, 1]
+                        })
+                    }]
+                }}>
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                        backgroundColor: toastType === 'success' ? '#1A3A2A' : '#3A1A1A',
+                        borderWidth: 1,
+                        borderColor: toastType === 'success' ? '#4ADE8040' : '#FF444440',
+                        paddingHorizontal: 20,
+                        paddingVertical: 14,
+                        borderRadius: 16,
+                        elevation: 15,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 8 },
+                        shadowOpacity: 0.4,
+                        shadowRadius: 12
+                    }}>
+                        <Ionicons
+                            name={toastType === 'success' ? 'checkmark-circle' : 'close-circle'}
+                            size={22}
+                            color={toastType === 'success' ? '#4ADE80' : '#FF6B6B'}
+                        />
+                        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 14 }}>{toastMsg}</Text>
+                    </View>
+                </Animated.View>
+            )}
+
             {activeTopTab === 'clas' && (
-                <ScrollView style={{ flex: 1 }}>
+                <View style={{ flex: 1 }}>
+                    {activeClansSubTab !== 'ranking' && (
+                        <View style={styles.searchContainer}>
+                            <Ionicons name="search" size={20} color={colors.subtext} style={{ marginLeft: 16 }} />
+                            <TextInput
+                                style={[styles.searchInput, { color: colors.text, outlineStyle: 'none' } as any]}
+                                placeholder="Buscar clãs..."
+                                placeholderTextColor={colors.subtext}
+                                value={clansSearch}
+                                onChangeText={setClansSearch}
+                            />
+                            <Pressable style={styles.searchActionBtn} onPress={() => setIsCreateModalVisible(true)}>
+                                <Ionicons name="add" size={20} color="#FFF" />
+                            </Pressable>
+                        </View>
+                    )}
                     <View style={styles.subTabBar}>
                         <Pressable onPress={() => setActiveClansSubTab('meus')} style={[styles.subTabBtn, activeClansSubTab === 'meus' && { backgroundColor: colors.accent }]}>
                             <Text style={[styles.subTabText, { color: activeClansSubTab === 'meus' ? colors.primary : colors.subtext }]}>Meus Clãs</Text>
@@ -398,26 +745,639 @@ export default function SocialScreen() {
                         <Pressable onPress={() => setActiveClansSubTab('buscar')} style={[styles.subTabBtn, activeClansSubTab === 'buscar' && { backgroundColor: colors.accent }]}>
                             <Text style={[styles.subTabText, { color: activeClansSubTab === 'buscar' ? colors.primary : colors.subtext }]}>Buscar</Text>
                         </Pressable>
-                    </View>
-                    {circles.map(circle => (
-                        <Pressable key={circle.id} style={[styles.circleRow, { borderBottomColor: colors.border }]} onPress={() => { setSelectedCircleId(circle.id); setIsDetailModalVisible(true); }}>
-                            <View style={styles.circleAvatars}><View style={[styles.stackedAvatar, { backgroundColor: colors.accent }]}><Text style={{ color: colors.primary, fontWeight: '800' }}>{circle.name[0]}</Text></View></View>
-                            <View style={{ flex: 1 }}><Text style={[styles.circleName, { color: colors.text }]}>{circle.name}</Text><Text style={{ fontSize: 11, color: colors.subtext }}>{circle.members.length} membros</Text></View>
-                            <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
+                        <Pressable onPress={() => setActiveClansSubTab('ranking')} style={[styles.subTabBtn, activeClansSubTab === 'ranking' && { backgroundColor: colors.accent }]}>
+                            <Text style={[styles.subTabText, { color: activeClansSubTab === 'ranking' ? colors.primary : colors.subtext }]}>Ranking</Text>
                         </Pressable>
-                    ))}
-                    <Pressable style={[styles.shareCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={handleShare}>
-                        <View style={{ flex: 1 }}><Text style={[styles.shareTitle, { color: colors.text }]}>Convidar via link</Text><Text style={[styles.shareSub, { color: colors.subtext }]}>Compartilhe sua localização sem conta</Text></View>
-                        <Ionicons name="share-social-outline" size={22} color={colors.primary} />
-                    </Pressable>
-                </ScrollView>
+                    </View>
+                    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+                        {(() => {
+                            if (activeClansSubTab === 'ranking') return <Leaderboard />;
+                            const myClans = circles.filter(c => c.members?.some((m: any) => m.id === user?.id));
+                            const otherClans = circles.filter(c => !c.members?.some((m: any) => m.id === user?.id));
+                            const list = activeClansSubTab === 'meus' ? myClans : otherClans;
+                            const filtered = list.filter(c => c.name?.toLowerCase().includes(clansSearch.toLowerCase()));
+                            if (filtered.length === 0) {
+                                return (
+                                    <View style={{ alignItems: 'center', paddingHorizontal: 40, paddingTop: 50 }}>
+                                        <Text style={{ fontSize: 40, marginBottom: 20 }}>{activeClansSubTab === 'meus' ? '🏰' : '🔍'}</Text>
+                                        <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700', textAlign: 'center' }}>
+                                            {activeClansSubTab === 'meus' ? 'Nenhum clã ainda' : 'Nenhum clã encontrado'}
+                                        </Text>
+                                        <Text style={{ color: colors.subtext, marginTop: 8, textAlign: 'center', lineHeight: 20 }}>
+                                            {activeClansSubTab === 'meus' ? 'Crie seu primeiro clã ou entre em um existente!' : 'Tente buscar com outro nome.'}
+                                        </Text>
+                                    </View>
+                                );
+                            }
+                            return filtered.map(circle => (
+                                <View key={circle.id} style={[styles.circleRow, { borderBottomColor: colors.border }]}>
+                                    <Pressable style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12, minWidth: 0 }} onPress={() => {
+                                        if (!circle.isPublic && circle.password && activeClansSubTab === 'buscar') {
+                                            setSelectedCircleId(circle.id);
+                                            setIsPassModalVisible(true);
+                                        } else {
+                                            setSelectedCircleId(circle.id);
+                                            setIsDetailModalVisible(true);
+                                        }
+                                    }}>
+                                        <View style={[styles.stackedAvatar, { backgroundColor: colors.accent, overflow: 'hidden' }]}>
+                                            {circle.avatar ? (
+                                                <Image source={{ uri: circle.avatar }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} alt={circle.name} />
+                                            ) : (
+                                                <Text style={{ color: colors.primary, fontWeight: '800' }}>{circle.name[0]}</Text>
+                                            )}
+                                        </View>
+                                        <View style={{ flex: 1, minWidth: 0 }}>
+                                            <Text style={[styles.circleName, { color: colors.text }]} numberOfLines={1}>{circle.name}</Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: circle.isPublic ? '#4ADE8018' : '#FF6B6B18', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                                    <Ionicons name={circle.isPublic ? 'globe-outline' : 'lock-closed'} size={9} color={circle.isPublic ? '#4ADE80' : '#FF6B6B'} />
+                                                    <Text style={{ fontSize: 9, fontWeight: '800', color: circle.isPublic ? '#4ADE80' : '#FF6B6B' }}>{circle.isPublic ? 'Aberto' : 'Privado'}</Text>
+                                                </View>
+                                                <Text style={{ fontSize: 11, color: colors.subtext }}>{circle.members?.length || 0} membros</Text>
+                                            </View>
+                                        </View>
+                                    </Pressable>
+                                    {activeClansSubTab === 'meus' && (
+                                        <Pressable onPress={() => handleShareClan(circle)} style={({ pressed }) => ({ width: 38, height: 38, borderRadius: 12, backgroundColor: pressed ? colors.primary + '30' : colors.primary + '15', alignItems: 'center', justifyContent: 'center', flexShrink: 0 })}>
+                                            <Ionicons name="share-social-outline" size={18} color={colors.primary} />
+                                        </Pressable>
+                                    )}
+                                    {activeClansSubTab === 'buscar' && (
+                                        <Pressable onPress={() => {
+                                            if (!circle.isPublic && circle.password) {
+                                                setSelectedCircleId(circle.id);
+                                                setIsPassModalVisible(true);
+                                            } else {
+                                                handleJoinCircle(circle.id);
+                                                showToast(`Você entrou no clã ${circle.name}! ⚔️`, 'success');
+                                            }
+                                        }} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: pressed ? colors.primary + '90' : colors.primary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, flexShrink: 0 })}>
+                                            <Ionicons name="enter-outline" size={16} color="#FFF" />
+                                            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 11 }}>Entrar</Text>
+                                        </Pressable>
+                                    )}
+                                </View>
+                            ));
+                        })()}
+                        {activeClansSubTab === 'meus' && (
+                            <Pressable style={[styles.shareCard, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={() => setIsCreateModalVisible(true)}>
+                                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Ionicons name="add-circle" size={22} color={colors.primary} />
+                                </View>
+                                <View style={{ flex: 1 }}><Text style={[styles.shareTitle, { color: colors.text }]}>Criar novo clã</Text><Text style={[styles.shareSub, { color: colors.subtext }]}>Forme sua tribo e explore junto!</Text></View>
+                            </Pressable>
+                        )}
+                    </ScrollView>
+                </View>
             )}
 
+            {/* Modal Criar Clã */}
+            <Modal visible={isCreateModalVisible} transparent animationType="slide">
+                <View style={{ flex: 1, backgroundColor: '#00000060', justifyContent: 'flex-end' }}>
+                    <Pressable style={{ flex: 1 }} onPress={() => setIsCreateModalVisible(false)} />
+                    <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 }}>
+                        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20 }} />
+                        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '30', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                                <Ionicons name="people" size={24} color={colors.primary} />
+                            </View>
+                            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Criar Clã</Text>
+                        </View>
+                        <TextInput style={[styles.modalInput, { color: colors.text, borderWidth: 1, borderColor: colors.border, backgroundColor: isDarkMode ? '#121218' : '#F7F7FA' }]} value={circleName} onChangeText={setCircleName} placeholder="Nome do clã" placeholderTextColor={colors.subtext} />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, backgroundColor: isDarkMode ? '#ffffff08' : '#0000000A', padding: 14, borderRadius: 14 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Ionicons name={isPublicNewClan ? 'globe-outline' : 'lock-closed'} size={18} color={isPublicNewClan ? '#4ADE80' : '#FF6B6B'} />
+                                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{isPublicNewClan ? 'Clã Público' : 'Clã Privado'}</Text>
+                            </View>
+                            <Switch value={isPublicNewClan} onValueChange={setIsPublicNewClan} trackColor={{ true: '#4ADE80' }} thumbColor="#FFF" />
+                        </View>
+                        {!isPublicNewClan && (
+                            <TextInput style={[styles.modalInput, { color: colors.text, borderWidth: 1, borderColor: colors.border, backgroundColor: isDarkMode ? '#121218' : '#F7F7FA', marginTop: 12 }]} value={newClanPassword} onChangeText={setNewClanPassword} placeholder="Definir senha do clã" secureTextEntry placeholderTextColor={colors.subtext} />
+                        )}
+                        <Text style={{ color: colors.subtext, fontSize: 11, marginTop: 8, fontWeight: '500' }}>
+                            {isPublicNewClan ? 'Qualquer explorador pode entrar livremente.' : 'Apenas quem souber a senha poderá entrar.'}
+                        </Text>
+                        <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
+                            <Pressable onPress={() => setIsCreateModalVisible(false)} style={{ flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: colors.text, fontWeight: '700' }}>Cancelar</Text>
+                            </Pressable>
+                            <Pressable onPress={handleCreateCircle} style={{ flex: 1, height: 48, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: '#FFF', fontWeight: '800' }}>Criar</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal Senha Clã Privado */}
+            <Modal visible={isPassModalVisible} transparent animationType="slide">
+                <View style={{ flex: 1, backgroundColor: '#00000060', justifyContent: 'flex-end' }}>
+                    <Pressable style={{ flex: 1 }} onPress={() => { setIsPassModalVisible(false); setPassAttempt(''); }} />
+                    <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 }}>
+                        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 20 }} />
+                        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: '#FF6B6B15', borderWidth: 1, borderColor: '#FF6B6B30', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+                                <Ionicons name="lock-closed" size={24} color="#FF6B6B" />
+                            </View>
+                            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Clã Privado</Text>
+                            <Text style={{ color: colors.subtext, fontSize: 13, marginTop: 4 }}>Insira a senha para entrar</Text>
+                        </View>
+                        <TextInput style={[styles.modalInput, { color: colors.text, borderWidth: 1, borderColor: colors.border, backgroundColor: isDarkMode ? '#121218' : '#F7F7FA' }]} value={passAttempt} onChangeText={setPassAttempt} placeholder="Senha do clã" secureTextEntry placeholderTextColor={colors.subtext} />
+                        <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
+                            <Pressable onPress={() => { setIsPassModalVisible(false); setPassAttempt(''); }} style={{ flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: colors.text, fontWeight: '700' }}>Voltar</Text>
+                            </Pressable>
+                            <Pressable onPress={handleVerifyPassword} style={{ flex: 1, height: 48, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+                                <Text style={{ color: '#FFF', fontWeight: '800' }}>Acessar</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal Detalhe Clã */}
+            <Modal visible={isDetailModalVisible} animationType="slide">
+                <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+                    {activeCircle && (
+                        <>
+                            <View style={styles.header}>
+                                <Pressable onPress={() => setIsDetailModalVisible(false)}>
+                                    <Ionicons name="arrow-back" size={24} color={colors.text} />
+                                </Pressable>
+                                <View style={{ alignItems: 'center' }}>
+                                    <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', marginBottom: 12, overflow: 'hidden' }}>
+                                        {activeCircle.avatar ? (
+                                            <Image source={{ uri: activeCircle.avatar }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} alt={activeCircle.name} />
+                                        ) : (
+                                            <Text style={{ fontSize: 24, fontWeight: '800', color: colors.primary }}>{activeCircle.name[0]}</Text>
+                                        )}
+                                    </View>
+                                    <Text style={[styles.title, { color: colors.text }]}>{activeCircle.name}</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                        <Ionicons name={activeCircle.isPublic ? 'globe-outline' : 'lock-closed'} size={10} color={activeCircle.isPublic ? '#4ADE80' : '#FF6B6B'} />
+                                        <Text style={{ fontSize: 10, fontWeight: '700', color: activeCircle.isPublic ? '#4ADE80' : '#FF6B6B' }}>{activeCircle.isPublic ? 'Público' : 'Privado'}</Text>
+                                        <Text style={{ fontSize: 10, color: colors.subtext, marginLeft: 6 }}>{activeCircle.members?.length || 0} membros</Text>
+                                        {activeCircle.adminId === user?.id && (
+                                            <View style={{ backgroundColor: colors.primary + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginLeft: 4 }}>
+                                                <Text style={{ fontSize: 9, color: colors.primary, fontWeight: '800' }}>Admin</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                    {activeCircle.description ? (
+                                        <Text style={{ fontSize: 12, color: colors.subtext, marginTop: 6, textAlign: 'center', paddingHorizontal: 40 }}>{activeCircle.description}</Text>
+                                    ) : null}
+                                </View>
+                                <View style={{ width: 24 }} />
+                            </View>
+
+                            <View style={styles.subTabBar}>
+                                <Pressable onPress={() => setActiveClanDetailTab('membros')} style={[styles.subTabBtn, activeClanDetailTab === 'membros' && { backgroundColor: colors.accent, flex: 1, alignItems: 'center' }, activeClanDetailTab !== 'membros' && { flex: 1, alignItems: 'center' }]}>
+                                    <Text style={[styles.subTabText, { color: activeClanDetailTab === 'membros' ? colors.primary : colors.subtext }]}>Membros</Text>
+                                </Pressable>
+                                <Pressable onPress={() => setActiveClanDetailTab('chat')} style={[styles.subTabBtn, activeClanDetailTab === 'chat' && { backgroundColor: colors.accent, flex: 1, alignItems: 'center' }, activeClanDetailTab !== 'chat' && { flex: 1, alignItems: 'center' }]}>
+                                    <Text style={[styles.subTabText, { color: activeClanDetailTab === 'chat' ? colors.primary : colors.subtext }]}>Chat do Clã</Text>
+                                </Pressable>
+                            </View>
+
+                            {activeClanDetailTab === 'membros' ? (
+                                <View style={{ flex: 1, paddingHorizontal: 20 }}>
+                                    <ScrollView style={{ flex: 1 }}>
+                                        {activeCircle.adminId === user?.id && (
+                                            <View style={{ marginTop: 20, marginBottom: 10, padding: 16, backgroundColor: colors.card, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
+                                                <Text style={{ color: colors.text, fontWeight: '800', marginBottom: 12 }}><Ionicons name="settings-outline" /> Configurações (Admin)</Text>
+                                                <TextInput 
+                                                    style={[styles.modalInput, { backgroundColor: isDarkMode ? '#121218' : '#F7F7FA', borderWidth: 1, borderColor: colors.border, color: colors.text, marginBottom: 10 }]} 
+                                                    placeholder="Nova Descrição" 
+                                                    placeholderTextColor={colors.subtext}
+                                                    defaultValue={activeCircle.description}
+                                                    onEndEditing={(e) => {
+                                                        AuthService.updateClanDetailsLocal(activeCircle.id, e.nativeEvent.text, activeCircle.avatar);
+                                                        loadSocialData();
+                                                        showToast('Descrição atualizada!', 'success');
+                                                    }}
+                                                />
+                                                <TextInput 
+                                                    style={[styles.modalInput, { backgroundColor: isDarkMode ? '#121218' : '#F7F7FA', borderWidth: 1, borderColor: colors.border, color: colors.text }]} 
+                                                    placeholder="URL da Foto do Clã" 
+                                                    placeholderTextColor={colors.subtext}
+                                                    defaultValue={activeCircle.avatar}
+                                                    onEndEditing={(e) => {
+                                                        AuthService.updateClanDetailsLocal(activeCircle.id, activeCircle.description, e.nativeEvent.text);
+                                                        loadSocialData();
+                                                        showToast('Foto atualizada!', 'success');
+                                                    }}
+                                                />
+                                            </View>
+                                        )}
+                                        {activeCircle.members?.map((m: any) => (
+                                            <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                                                <View style={[styles.memberAvatar, { backgroundColor: colors.accent, width: 44, height: 44, borderRadius: 22 }]}>
+                                                    <PetPreview species={m.species || 'bunny'} size={36} customImageUri={m.avatar} />
+                                                </View>
+                                                <View style={{ flex: 1 }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15 }}>{m.name || 'Explorador'}</Text>
+                                                        {activeCircle.adminId === m.id && (
+                                                            <Ionicons name="star" size={12} color="#FBBF24" />
+                                                        )}
+                                                    </View>
+                                                    <Text style={{ color: colors.subtext, fontSize: 12 }}>{m.wander_id || ''}</Text>
+                                                </View>
+                                                {activeCircle.adminId === user?.id && m.id !== user?.id && (
+                                                    <Pressable onPress={() => {
+                                                        AuthService.removeMemberLocal(activeCircle.id, m.id);
+                                                        showToast(`${m.name} foi removido`, 'decline');
+                                                        setIsDetailModalVisible(false);
+                                                        loadSocialData();
+                                                    }} style={{ padding: 8, backgroundColor: '#FF6B6B15', borderRadius: 8 }}>
+                                                        <Ionicons name="trash-outline" size={18} color="#FF6B6B" />
+                                                    </Pressable>
+                                                )}
+                                            </View>
+                                        ))}
+                                    </ScrollView>
+                                    <View style={{ paddingVertical: 20 }}>
+                                        <Pressable onPress={() => { handleShareClan(activeCircle); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, height: 50, borderRadius: 14 }}>
+                                            <Ionicons name="share-social" size={18} color="#FFF" />
+                                            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Compartilhar Clã</Text>
+                                        </Pressable>
+                                    </View>
+                                </View>
+                            ) : (
+                                <View style={{ flex: 1 }}>
+                                    {/* Clan Chat Messages */}
+                                    <ScrollView
+                                        style={{ flex: 1 }}
+                                        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 20, gap: 4 }}
+                                        ref={clanChatScrollRef}
+                                        onContentSizeChange={() => clanChatScrollRef.current?.scrollToEnd()}
+                                    >
+                                        {clanChatMessages[activeCircle.id] && clanChatMessages[activeCircle.id].length > 0 ? (
+                                            clanChatMessages[activeCircle.id].map((m, idx) => {
+                                                const isMe = m.senderId === 'me';
+                                                const time = m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                                                return (
+                                                    <View key={m.id} style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', marginBottom: 12, maxWidth: '78%' }}>
+                                                        <View style={{
+                                                            backgroundColor: isMe ? colors.primary : (isDarkMode ? '#2A2A3A' : '#EFEFEF'),
+                                                            paddingHorizontal: 16,
+                                                            paddingVertical: 10,
+                                                            borderRadius: 20,
+                                                            borderBottomRightRadius: isMe ? 4 : 20,
+                                                            borderBottomLeftRadius: isMe ? 20 : 4,
+                                                            shadowColor: '#000',
+                                                            shadowOffset: { width: 0, height: 2 },
+                                                            shadowOpacity: 0.10,
+                                                            shadowRadius: 6,
+                                                            elevation: 3,
+                                                        }}>
+                                                            <Text style={{ color: isMe ? '#FFF' : colors.text, fontSize: 14, lineHeight: 20 }}>{m.text}</Text>
+                                                        </View>
+                                                        <Text style={{ color: colors.subtext, fontSize: 10, marginTop: 4, textAlign: isMe ? 'right' : 'left', paddingHorizontal: 4 }}>{time}</Text>
+                                                    </View>
+                                                );
+                                            })
+                                        ) : (
+                                            <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
+                                                <View style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                                                    <Ionicons name="chatbubbles-outline" size={34} color={colors.primary} />
+                                                </View>
+                                                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginBottom: 6 }}>Quebrem o gelo!</Text>
+                                                <Text style={{ color: colors.subtext, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>Seja o primeiro a falar no chat do clã ⚔️</Text>
+                                            </View>
+                                        )}
+                                    </ScrollView>
+
+                                    {/* Clan Chat Input Bar */}
+                                    <View style={{
+                                        borderTopWidth: 1,
+                                        borderTopColor: isDarkMode ? '#ffffff10' : '#00000010',
+                                        backgroundColor: colors.background,
+                                    }}>
+                                        {/* Image preview */}
+                                        {clanChatMediaUri && (
+                                            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                                                <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
+                                                    <Image
+                                                        source={{ uri: clanChatMediaUri }}
+                                                        style={{ width: 80, height: 80, borderRadius: 14 }}
+                                                    />
+                                                    <Pressable
+                                                        onPress={() => setClanChatMediaUri(null)}
+                                                        style={{
+                                                            position: 'absolute', top: -6, right: -6,
+                                                            width: 22, height: 22, borderRadius: 11,
+                                                            backgroundColor: '#FF4444',
+                                                            alignItems: 'center', justifyContent: 'center',
+                                                        }}
+                                                    >
+                                                        <Ionicons name="close" size={13} color="#FFF" />
+                                                    </Pressable>
+                                                </View>
+                                            </View>
+                                        )}
+
+                                        {/* Input row */}
+                                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12, paddingBottom: 20 }}>
+                                            {/* Media button */}
+                                            <Pressable
+                                                onPress={() => handlePickMedia('clan')}
+                                                style={({ pressed }) => ({
+                                                    width: 42,
+                                                    height: 42,
+                                                    borderRadius: 21,
+                                                    backgroundColor: pressed
+                                                        ? colors.primary + '30'
+                                                        : (isDarkMode ? '#1E1E2E' : '#F2F2F7'),
+                                                    borderWidth: 1,
+                                                    borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                })}
+                                            >
+                                                <Ionicons name="image-outline" size={20} color={colors.primary} />
+                                            </Pressable>
+
+                                            {/* Text input pill */}
+                                            <View style={{
+                                                flex: 1,
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                backgroundColor: isDarkMode ? '#1E1E2E' : '#F2F2F7',
+                                                borderRadius: 28,
+                                                borderWidth: 1,
+                                                borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                                paddingHorizontal: 16,
+                                                minHeight: 48,
+                                            }}>
+                                                <TextInput
+                                                    style={{ flex: 1, color: colors.text, fontSize: 15, paddingVertical: 10, outlineStyle: 'none' } as any}
+                                                    value={clanChatInput}
+                                                    onChangeText={setClanChatInput}
+                                                    placeholder="Mensagem para o clã..."
+                                                    placeholderTextColor={colors.subtext}
+                                                    multiline
+                                                    onSubmitEditing={handleSendClanMessage}
+                                                />
+                                            </View>
+
+                                            {/* Send button */}
+                                            <Pressable
+                                                onPress={handleSendClanMessage}
+                                                style={({ pressed }) => ({
+                                                    width: 48,
+                                                    height: 48,
+                                                    backgroundColor: (clanChatInput.trim() || clanChatMediaUri) ? colors.primary : (isDarkMode ? '#333' : '#DDD'),
+                                                    borderRadius: 24,
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    opacity: pressed ? 0.7 : 1,
+                                                    transform: [{ scale: pressed ? 0.92 : 1 }],
+                                                    shadowColor: colors.primary,
+                                                    shadowOffset: { width: 0, height: 4 },
+                                                    shadowOpacity: (clanChatInput.trim() || clanChatMediaUri) ? 0.4 : 0,
+                                                    shadowRadius: 8,
+                                                    elevation: (clanChatInput.trim() || clanChatMediaUri) ? 6 : 0,
+                                                })}
+                                            >
+                                                <Ionicons name="send" size={20} color={(clanChatInput.trim() || clanChatMediaUri) ? '#FFF' : colors.subtext} style={{ marginLeft: 2 }} />
+                                            </Pressable>
+                                        </View>
+                                    </View>
+                                </View>
+                            )}
+                        </>
+                    )}
+                </SafeAreaView>
+            </Modal>
+
+            {/* ============================================================ */}
+            {/* PERSONAL CHAT MODAL — Redesigned                             */}
+            {/* ============================================================ */}
             <Modal visible={isChatVisible} animationType="slide">
                 <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-                    <View style={styles.header}><Pressable onPress={() => setIsChatVisible(false)}><Ionicons name="arrow-back" size={24} color={colors.text} /></Pressable><Text style={[styles.title, { color: colors.text }]}>{chatTarget?.name}</Text><View style={{ width: 24 }} /></View>
-                    <ScrollView style={{ flex: 1, padding: 20 }} ref={chatScrollRef} onContentSizeChange={() => chatScrollRef.current?.scrollToEnd()}>{chatMessages.map(m => (<View key={m.id} style={{ alignSelf: m.senderId === 'me' ? 'flex-end' : 'flex-start', backgroundColor: m.senderId === 'me' ? colors.primary : colors.accent, padding: 12, borderRadius: 16, marginBottom: 10, maxWidth: '80%' }}><Text style={{ color: m.senderId === 'me' ? '#FFF' : colors.text }}>{m.text}</Text></View>))}</ScrollView>
-                    <View style={{ padding: 20, flexDirection: 'row', gap: 10 }}><TextInput style={[styles.modalInput, { flex: 1, color: colors.text, backgroundColor: isDarkMode ? '#1A1A1A' : '#F5F5F5' }]} value={chatInput} onChangeText={setChatInput} placeholder="Digite algo..." placeholderTextColor={colors.subtext} /><Pressable onPress={handleSendMessage} style={{ width: 45, height: 45, backgroundColor: colors.primary, borderRadius: 23, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="send" size={20} color="#FFF" /></Pressable></View>
+
+                    {/* ── Header ── */}
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderBottomWidth: 1,
+                        borderBottomColor: isDarkMode ? '#ffffff10' : '#00000010',
+                        gap: 12,
+                    }}>
+                        <Pressable
+                            onPress={() => setIsChatVisible(false)}
+                            style={({ pressed }) => ({
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                                backgroundColor: pressed ? (isDarkMode ? '#ffffff15' : '#00000010') : 'transparent',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            })}
+                        >
+                            <Ionicons name="chevron-back" size={26} color={colors.text} />
+                        </Pressable>
+
+                        {/* Avatar + online dot */}
+                        <View style={{ position: 'relative' }}>
+                            <View style={{
+                                width: 42,
+                                height: 42,
+                                borderRadius: 21,
+                                backgroundColor: colors.primary + '25',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                overflow: 'hidden',
+                            }}>
+                                {chatTarget?.avatar ? (
+                                    <Image source={{ uri: chatTarget.avatar }} style={{ width: 42, height: 42, borderRadius: 21 }} />
+                                ) : (
+                                    <Ionicons name="person" size={22} color={colors.primary} />
+                                )}
+                            </View>
+                            <View style={{
+                                position: 'absolute',
+                                bottom: 1,
+                                right: 1,
+                                width: 11,
+                                height: 11,
+                                borderRadius: 6,
+                                backgroundColor: '#4ADE80',
+                                borderWidth: 2,
+                                borderColor: colors.background,
+                            }} />
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }} numberOfLines={1}>
+                                {chatTarget?.name}
+                            </Text>
+                            <Text style={{ color: '#4ADE80', fontSize: 11, fontWeight: '600' }}>online agora</Text>
+                        </View>
+
+                        <Pressable style={({ pressed }) => ({ width: 38, height: 38, borderRadius: 19, backgroundColor: pressed ? colors.primary + '20' : colors.primary + '12', alignItems: 'center', justifyContent: 'center' })}>
+                            <Ionicons name="ellipsis-horizontal" size={20} color={colors.primary} />
+                        </Pressable>
+                    </View>
+
+                    {/* ── Messages ── */}
+                    <ScrollView
+                        style={{ flex: 1 }}
+                        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}
+                        ref={chatScrollRef}
+                        onContentSizeChange={() => chatScrollRef.current?.scrollToEnd()}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {chatMessages.length === 0 && (
+                            <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: 60 }}>
+                                <View style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                                    <Ionicons name="chatbubble-ellipses-outline" size={34} color={colors.primary} />
+                                </View>
+                                <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginBottom: 6 }}>Começa a conversa!</Text>
+                                <Text style={{ color: colors.subtext, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>Diga oi para {chatTarget?.name} 👋</Text>
+                            </View>
+                        )}
+                        {chatMessages.map((m, idx) => {
+                            const isMe = m.senderId === 'me';
+                            const time = m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                            const prevMsg = chatMessages[idx - 1];
+                            const showDateSep = idx === 0 || (prevMsg && new Date(m.timestamp).toDateString() !== new Date(prevMsg.timestamp).toDateString());
+                            return (
+                                <View key={m.id}>
+                                    {showDateSep && (
+                                        <View style={{ alignItems: 'center', marginVertical: 16 }}>
+                                            <View style={{ backgroundColor: isDarkMode ? '#ffffff12' : '#00000010', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 }}>
+                                                <Text style={{ color: colors.subtext, fontSize: 11, fontWeight: '600' }}>
+                                                    {new Date(m.timestamp).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    )}
+                                    <View style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', marginBottom: 12, maxWidth: '78%' }}>
+                                        <View style={{
+                                            backgroundColor: isMe ? colors.primary : (isDarkMode ? '#2A2A3A' : '#EFEFEF'),
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 10,
+                                            borderRadius: 22,
+                                            borderBottomRightRadius: isMe ? 4 : 22,
+                                            borderBottomLeftRadius: isMe ? 22 : 4,
+                                            shadowColor: isMe ? colors.primary : '#000',
+                                            shadowOffset: { width: 0, height: 2 },
+                                            shadowOpacity: isMe ? 0.25 : 0.08,
+                                            shadowRadius: 8,
+                                            elevation: 3,
+                                        }}>
+                                            <Text style={{ color: isMe ? '#FFF' : colors.text, fontSize: 15, lineHeight: 22 }}>{m.text}</Text>
+                                        </View>
+                                        <Text style={{ color: colors.subtext, fontSize: 10, marginTop: 4, textAlign: isMe ? 'right' : 'left', paddingHorizontal: 4 }}>{time}</Text>
+                                    </View>
+                                </View>
+                            );
+                        })}
+                    </ScrollView>
+
+                    {/* ── Input Bar ── */}
+                    <View style={{
+                        flexDirection: 'column',
+                        borderTopWidth: 1,
+                        borderTopColor: isDarkMode ? '#ffffff10' : '#00000010',
+                        backgroundColor: colors.background,
+                    }}>
+                        {/* Image preview strip */}
+                        {chatMediaUri && (
+                            <View style={{ paddingHorizontal: 16, paddingTop: 10 }}>
+                                <View style={{ position: 'relative', alignSelf: 'flex-start' }}>
+                                    <Image
+                                        source={{ uri: chatMediaUri }}
+                                        style={{ width: 80, height: 80, borderRadius: 14 }}
+                                    />
+                                    <Pressable
+                                        onPress={() => setChatMediaUri(null)}
+                                        style={{
+                                            position: 'absolute', top: -6, right: -6,
+                                            width: 22, height: 22, borderRadius: 11,
+                                            backgroundColor: '#FF4444',
+                                            alignItems: 'center', justifyContent: 'center',
+                                        }}
+                                    >
+                                        <Ionicons name="close" size={13} color="#FFF" />
+                                    </Pressable>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Input row */}
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, padding: 12 }}>
+                            {/* Media button */}
+                            <Pressable
+                                onPress={() => handlePickMedia('chat')}
+                                style={({ pressed }) => ({
+                                    width: 42,
+                                    height: 42,
+                                    borderRadius: 21,
+                                    backgroundColor: pressed
+                                        ? colors.primary + '30'
+                                        : (isDarkMode ? '#1E1E2E' : '#F2F2F7'),
+                                    borderWidth: 1,
+                                    borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                })}
+                            >
+                                <Ionicons name="image-outline" size={20} color={colors.primary} />
+                            </Pressable>
+
+                            {/* Text input pill */}
+                            <View style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: isDarkMode ? '#1E1E2E' : '#F2F2F7',
+                                borderRadius: 28,
+                                borderWidth: 1,
+                                borderColor: isDarkMode ? '#ffffff15' : '#00000010',
+                                paddingHorizontal: 16,
+                                minHeight: 48,
+                            }}>
+                                <TextInput
+                                    style={{ flex: 1, color: colors.text, fontSize: 15, paddingVertical: 10, outlineStyle: 'none' } as any}
+                                    value={chatInput}
+                                    onChangeText={setChatInput}
+                                    placeholder={`Mensagem para ${chatTarget?.name ?? ''}...`}
+                                    placeholderTextColor={colors.subtext}
+                                    multiline
+                                    onSubmitEditing={handleSendMessage}
+                                />
+                            </View>
+
+                            {/* Send button */}
+                            <Pressable
+                                onPress={handleSendMessage}
+                                style={({ pressed }) => ({
+                                    width: 48,
+                                    height: 48,
+                                    backgroundColor: (chatInput.trim() || chatMediaUri) ? colors.primary : (isDarkMode ? '#333' : '#DDD'),
+                                    borderRadius: 24,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    opacity: pressed ? 0.7 : 1,
+                                    transform: [{ scale: pressed ? 0.92 : 1 }],
+                                    shadowColor: colors.primary,
+                                    shadowOffset: { width: 0, height: 4 },
+                                    shadowOpacity: (chatInput.trim() || chatMediaUri) ? 0.45 : 0,
+                                    shadowRadius: 10,
+                                    elevation: (chatInput.trim() || chatMediaUri) ? 6 : 0,
+                                })}
+                            >
+                                <Ionicons name="send" size={20} color={(chatInput.trim() || chatMediaUri) ? '#FFF' : colors.subtext} style={{ marginLeft: 2 }} />
+                            </Pressable>
+                        </View>
+                    </View>
+
                 </SafeAreaView>
             </Modal>
         </SafeAreaView>

@@ -36,12 +36,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { CATALOG } from '../constants/catalog';
 
-if (Platform.OS === 'android') {
-    if (UIManager.setLayoutAnimationEnabledExperimental) {
-        UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-}
-
 const { width, height } = Dimensions.get('window');
 const FURNITURE_CATEGORIES = ['Todos', 'Móveis', 'Luminárias', 'Tapetes', 'Diversos'];
 const ACCESSORY_CATEGORIES = ['Todos', 'Óculos', 'Chapéu', 'Superior', 'Inferior', 'Tênis'];
@@ -62,7 +56,8 @@ export default function PetHomeScreen() {
     const [placedItems, setPlacedItems] = useState<string[]>([]);
     const [selectedCategory, setSelectedCategory] = useState('Todos');
     
-    // Modals
+    const [showEquipModal, setShowEquipModal] = useState(false);
+    const [equippedItem, setEquippedItem] = useState<any>(null);
     const [showPurchaseModal, setShowPurchaseModal] = useState(false);
     const [selectedLockedItem, setSelectedLockedItem] = useState<any>(null);
     const [showNameModal, setShowNameModal] = useState(false);
@@ -120,7 +115,12 @@ export default function PetHomeScreen() {
         await updatePetAccessoryLocal(acc);
         const updatedPet = await getPetLocal();
         setPet(updatedPet);
-        Alert.alert("Sucesso", "Visual atualizado!");
+        
+        const itemDef = CATALOG.find(c => c.id === acc);
+        if (itemDef) {
+            setEquippedItem(itemDef);
+            setShowEquipModal(true);
+        }
     };
 
     const handleUpdateName = () => {
@@ -507,39 +507,86 @@ export default function PetHomeScreen() {
                     </Pressable>
                 </View>
 
-                {/* Purchase Modal */}
-                <Modal visible={showPurchaseModal} transparent={true} animationType="fade">
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
+                <Modal 
+                    visible={showEquipModal} 
+                    transparent={true} 
+                    animationType="fade"
+                    onRequestClose={() => setShowEquipModal(false)}
+                >
+                    <Pressable style={styles.modalOverlay} onPress={() => setShowEquipModal(false)}>
+                        <Pressable style={[styles.modalContent, { borderColor: '#A78BFF' }]} onPress={e => e.stopPropagation()}>
                             <View style={styles.modalHeader}>
-                                <View style={styles.modalIconBox}><Ionicons name="lock-closed" size={32} color="#A78BFF" /></View>
-                                <Text style={styles.modalTitle}>Item Bloqueado</Text>
-                                <Text style={styles.modalDesc}>Você ainda não possui o item <Text style={{ color: '#A78BFF', fontWeight: '900' }}>{selectedLockedItem?.name}</Text>. Deseja ir à loja agora?</Text>
+                                <View style={[styles.modalIconBox, { backgroundColor: '#A78BFF15', position: 'relative' }]}>
+                                    <Ionicons name="sparkles" size={40} color="#A78BFF" />
+                                    {equippedItem && (
+                                        <View style={{ position: 'absolute', bottom: -5, right: -5, backgroundColor: '#1C1C21', borderRadius: 15, padding: 5, borderWidth: 2, borderColor: '#A78BFF' }}>
+                                            <Ionicons name={equippedItem.icon} size={20} color="#A78BFF" />
+                                        </View>
+                                    )}
+                                </View>
+                                <Text style={styles.modalTitle}>Novo Visual!</Text>
+                                <Text style={styles.modalDesc}>
+                                    Você equipou o item <Text style={{ color: '#A78BFF', fontWeight: '900' }}>{equippedItem?.name}</Text>. 
+                                    Ficou incrível!
+                                </Text>
                             </View>
                             <View style={styles.modalFooter}>
-                                <Pressable style={styles.modalCancelBtn} onPress={() => setShowPurchaseModal(false)}><Text style={styles.modalCancelText}>Agora não</Text></Pressable>
-                                <Pressable style={styles.modalActionBtn} onPress={() => { setShowPurchaseModal(false); router.push({ pathname: '/shop', params: { tab: 'home', highlight: selectedLockedItem?.id } }); }}>
-                                    <LinearGradient colors={['#A78BFF', '#7C3AED']} style={styles.modalActionGradient}><Text style={styles.modalActionText}>Ir para Loja</Text><Ionicons name="cart" size={16} color="#FFF" style={{ marginLeft: 6 }} /></LinearGradient>
+                                <Pressable style={styles.modalActionBtn} onPress={() => setShowEquipModal(false)}>
+                                    <LinearGradient colors={['#A78BFF', '#7C3AED']} style={styles.modalActionGradient}>
+                                        <Text style={styles.modalActionText}>Show!</Text>
+                                    </LinearGradient>
                                 </Pressable>
                             </View>
-                        </View>
-                    </View>
+                        </Pressable>
+                    </Pressable>
+                </Modal>
+
+                {/* Purchase Modal */}
+                <Modal 
+                    visible={showPurchaseModal} 
+                    transparent={true} 
+                    animationType="fade"
+                    onRequestClose={() => setShowPurchaseModal(false)}
+                >
+                    <Pressable style={styles.modalOverlay} onPress={() => setShowPurchaseModal(false)}>
+                        <Pressable style={[styles.modalContent]} onPress={e => e.stopPropagation()}>
+                            <View style={styles.modalHeader}>
+                                <View style={styles.modalIconBox}><Ionicons name="lock-open-outline" size={40} color="#A78BFF" /></View>
+                                <Text style={styles.modalTitle}>Item Bloqueado</Text>
+                                <Text style={styles.modalDesc}>
+                                    Você ainda não possui o item <Text style={{ color: '#A78BFF', fontWeight: '900' }}>{selectedLockedItem?.name}</Text>. 
+                                    Gostaria de ir à loja agora?
+                                </Text>
+                            </View>
+                            <View style={styles.modalFooter}>
+                                <Pressable style={styles.modalCancelBtn} onPress={() => setShowPurchaseModal(false)}><Text style={styles.modalCancelText}>Depois</Text></Pressable>
+                                <Pressable style={styles.modalActionBtn} onPress={() => { setShowPurchaseModal(false); router.push('/shop'); }}>
+                                    <LinearGradient colors={['#A78BFF', '#7C3AED']} style={styles.modalActionGradient}><Text style={styles.modalActionText}>Ir à Loja</Text></LinearGradient>
+                                </Pressable>
+                            </View>
+                        </Pressable>
+                    </Pressable>
                 </Modal>
 
                 {/* Name Modal */}
-                <Modal visible={showNameModal} transparent={true} animationType="slide">
-                    <View style={styles.modalOverlay}>
-                        <View style={styles.modalContent}>
+                <Modal 
+                    visible={showNameModal} 
+                    transparent={true} 
+                    animationType="fade"
+                    onRequestClose={() => setShowNameModal(false)}
+                >
+                    <Pressable style={styles.modalOverlay} onPress={() => setShowNameModal(false)}>
+                        <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
                             <View style={styles.modalHeader}>
                                 <View style={styles.modalIconBox}><Ionicons name="pencil" size={32} color="#A78BFF" /></View>
-                                <Text style={styles.modalTitle}>Nomear Pet</Text>
-                                <Text style={styles.modalDesc}>Como você quer chamar seu companheiro?</Text>
+                                <Text style={styles.modalTitle}>Novo Nome</Text>
+                                <Text style={styles.modalDesc}>Como você quer chamar seu pet?</Text>
                             </View>
                             
                             <TextInput
                                 style={styles.modalInput}
-                                placeholder="Ex: Rex, Luna, Pipoca..."
-                                placeholderTextColor="#666"
+                                placeholder="Nome do pet..."
+                                placeholderTextColor="#555"
                                 value={tempName}
                                 onChangeText={setTempName}
                                 autoFocus={true}
@@ -552,8 +599,8 @@ export default function PetHomeScreen() {
                                     <LinearGradient colors={['#A78BFF', '#7C3AED']} style={styles.modalActionGradient}><Text style={styles.modalActionText}>Confirmar</Text></LinearGradient>
                                 </Pressable>
                             </View>
-                        </View>
-                    </View>
+                        </Pressable>
+                    </Pressable>
                 </Modal>
             </SafeAreaView>
         </View>

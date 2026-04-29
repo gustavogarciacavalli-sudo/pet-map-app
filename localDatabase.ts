@@ -25,6 +25,8 @@ const LIKES_KEY = '@wanderpet_likes';
 const HAPPINESS_KEY = '@wanderpet_happiness';
 const HAPPINESS_LAST_UPDATE_KEY = '@wanderpet_happiness_last_update';
 const RADAR_COOLDOWN_KEY = '@wanderpet_radar_cooldown';
+const USER_STATUS_KEY = '@wanderpet_user_status';
+const USER_STATUS_TS_KEY = '@wanderpet_user_status_ts';
 
 export type Species = 'bunny' | 'puppy' | 'cat' | 'sheep' | 'mouse' | 'snake' | 'fox' | 'parrot' | 'frog' | 'cockroach' | 'wolf' | 'raccoon' | 'bear';
 
@@ -720,4 +722,32 @@ export const getRadarCooldownLocal = async (): Promise<number> => {
 
 export const saveRadarCooldownLocal = async (timestamp: number): Promise<void> => {
     await AsyncStorage.setItem(RADAR_COOLDOWN_KEY, timestamp.toString());
+};
+
+// ─── STATUS DO USUÁRIO ───
+export const getStatusLocal = async (): Promise<{ status: string | null, timestamp: number }> => {
+    try {
+        const status = await AsyncStorage.getItem(USER_STATUS_KEY);
+        const ts = await AsyncStorage.getItem(USER_STATUS_TS_KEY);
+        return {
+            status: status || null,
+            timestamp: ts ? parseInt(ts, 10) : 0
+        };
+    } catch {
+        return { status: null, timestamp: 0 };
+    }
+};
+
+export const saveStatusLocal = async (status: string | null): Promise<void> => {
+    try {
+        if (status === null) {
+            await AsyncStorage.removeItem(USER_STATUS_KEY);
+            await AsyncStorage.removeItem(USER_STATUS_TS_KEY);
+        } else {
+            await AsyncStorage.setItem(USER_STATUS_KEY, status);
+            await AsyncStorage.setItem(USER_STATUS_TS_KEY, Date.now().toString());
+        }
+    } catch (error) {
+        console.error("Erro ao salvar status local:", error);
+    }
 };

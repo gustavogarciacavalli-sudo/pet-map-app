@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal, TextInput } from 'react-native';
+import { View, StyleSheet, StatusBar, Alert, Text, Platform, Pressable, Image, ScrollView, Switch, Dimensions, Animated, PanResponder, Modal, TextInput, DeviceEventEmitter } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,7 +52,9 @@ import {
     getInventoryLocal,
     getGemsLocal,
     saveGemsLocal,
-    addCoinsLocal
+    addCoinsLocal,
+    getStatusLocal,
+    saveStatusLocal
 } from '@/localDatabase';
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -240,6 +242,58 @@ export default function MapScreen() {
     const typingTimeout = useRef<any>(null);
     const [chatMediaUri, setChatMediaUri] = useState<string | null>(null);
     const [fullScreenImageUri, setFullScreenImageUri] = useState<string | null>(null);
+    const [currentStatus, setCurrentStatus] = useState<string | null>(null);
+    const currentStatusRef = useRef<string | null>(null);
+
+    const updateStatus = (status: string | null) => {
+        setCurrentStatus(status);
+        currentStatusRef.current = status;
+        saveStatusLocal(status); // Persistir
+    };
+
+    
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            const { status, timestamp } = await getStatusLocal();
+            if (status && Date.now() - timestamp >= 24 * 3600 * 1000) {
+                updateStatus(null);
+                DeviceEventEmitter.emit('currentStatusReport', null);
+            }
+        }, 60000); // Check every minute
+        return () => clearInterval(interval);
+    }, []);
+
+    // Listeners para Status vindos do Perfil
+    useEffect(() => {
+        const sub = DeviceEventEmitter.addListener('statusChanged', (status) => {
+            updateStatus(status);
+            if (lastLocation.current) {
+                broadcastLocation({
+                    ...lastLocation.current,
+                    heading: location.heading,
+                    timestamp: Date.now()
+                }, status);
+            }
+        });
+
+        const reqSub = DeviceEventEmitter.addListener('requestCurrentStatus', () => {
+            DeviceEventEmitter.emit('currentStatusReport', currentStatusRef.current);
+        });
+
+        return () => {
+            sub.remove();
+            reqSub.remove();
+        };
+    }, [currentStatus, location.heading]);
+
+    const STATUS_PRESETS = [
+        { label: 'Passeando!', emoji: '🐕' },
+        { label: 'Procurando tesouros!', emoji: '💎' },
+        { label: 'Bora sincronizar?', emoji: '🤝' },
+        { label: 'Em missão!', emoji: '⚔️' },
+        { label: 'Dando um tempo', emoji: '☕' },
+        { label: 'Ocupado', emoji: '📴' },
+    ];
 
     const handlePickChatMedia = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -585,6 +639,14 @@ export default function MapScreen() {
             }
             
             setUserAvatarUri(avatar);
+
+        const { status, timestamp } = await getStatusLocal();
+        if (status && Date.now() - timestamp < 24 * 3600 * 1000) {
+            updateStatus(status);
+        } else if (status) {
+            updateStatus(null);
+        }
+
             if (u.name) setUserName(u.name);
         }
 
@@ -663,7 +725,7 @@ export default function MapScreen() {
                     longitude: newLon,
                     heading: heading || 0,
                     timestamp: Date.now()
-                });
+                }, currentStatusRef.current);
                 const syncCloudLocation = async () => {
                     const user = await getCurrentUserLocal();
                     if (user && isValidUUID(user.id)) {
@@ -717,7 +779,8 @@ export default function MapScreen() {
             imageUri: userAvatarUri,
             pet: pet,
             isMe: true,
-            heading: location.heading
+            heading: location.heading,
+            status: currentStatus
         });
 
         Object.values(remoteUsers).forEach(u => {
@@ -730,12 +793,13 @@ export default function MapScreen() {
                     color: colors.primary,
                     imageUri: u.imageUri,
                     pet: u.pet,
-                    heading: u.location.heading
+                    heading: u.location.heading,
+                    status: u.status
                 });
             }
         });
         return list;
-    }, [remoteUsers, location, activeCircle, activeCircleMembers, userName, userAvatarUri, pet]);
+    }, [remoteUsers, location, activeCircle, activeCircleMembers, userName, userAvatarUri, pet, currentStatus]);
 
     useEffect(() => {
         const clusters = clusterPlayers(players, currentRegion || location, 0.001);
@@ -765,6 +829,7 @@ export default function MapScreen() {
         });
         Alert.alert("Convite Enviado!", "Chamando jogadores em um raio de 1km para sincronizar.");
     };
+
 
     const acceptSync = () => {
         if (syncPayload) {
@@ -2143,6 +2208,8 @@ export default function MapScreen() {
                     )}
                 </View>
             </Modal>
+
+            
         </View>
         </MarkerCaptureProvider>
     );
@@ -2176,4 +2243,5 @@ const styles = StyleSheet.create({
     // Estilos de Chat Integrado
     chatBubble: { padding: 12, borderRadius: 16, marginBottom: 8, maxWidth: '80%' },
     quickMsgBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginRight: 8, borderWidth: 1 },
+    
 });

@@ -10,6 +10,7 @@ export interface PlayerData {
   pet?: any;
   isMe?: boolean;
   heading?: number;
+  status?: string | null;
 }
 
 export interface MarkerData {

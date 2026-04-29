@@ -7,6 +7,16 @@ import { AuthService } from '../../services/AuthService';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useTheme } from '../../components/ThemeContext';
 import { MAIN_QUESTS, DAILY_QUESTS, WEEKLY_QUESTS, MONTHLY_QUESTS, QuestDef, QuestType } from '../../data/questsData';
+import { useSupabaseRealtime } from '../../components/SupabaseRealtimeProvider';
+import * as Location from 'expo-location';
+
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371e3;
+    const p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+    const dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dp/2)*Math.sin(dp/2) + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 // ─── Reward Modal Component ───
 function RewardModal({ visible, onClose, reward, xp, levelUp, level, colors }: any) {
@@ -244,7 +254,9 @@ export default function QuestsScreen() {
     const [stats, setStats] = useState({
         coins: 0, level: 1, distTotal: 0, distDaily: 0, distWeekly: 0,
         friendsCount: 0, groupCount: 0, hasPhoto: false, spentCoins: 0, maxGroupMembers: 0,
+        nearbyClanMembers: 0,
     });
+    const { remoteUsers } = useSupabaseRealtime();
 
     const [claimedIds, setClaimedIds] = useState<string[]>([]);
     const [rewardModalData, setRewardModalData] = useState<any>(null);
@@ -305,10 +317,51 @@ export default function QuestsScreen() {
             return Math.max(acc, memCount);
         }, 0);
 
+        // Lógica de Membros do Clã Próximos
+        let nearbyClanMembers = 1; // O próprio usuário
+        if (user && cloudGroups.length > 0) {
+            try {
+                const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                const myLat = loc.coords.latitude;
+                const myLon = loc.coords.longitude;
+
+                // Filtrar usuários remotos que estão no mesmo clã e próximos
+                const myClanIds = cloudGroups
+                    .filter((g: any) => g.group_members?.some((m: any) => m.user_id === user.id))
+                    .map((g: any) => g.id);
+
+                const nearbyClanMemsSet = new Set<string>();
+                nearbyClanMemsSet.add(user.id);
+
+                Object.values(remoteUsers).forEach((u: any) => {
+                    if (u.location) {
+                        const d = calculateDistance(myLat, myLon, u.location.latitude, u.location.longitude);
+                        if (d <= 100) { // Raio de 100 metros
+                            // Verificar se esse usuário está em algum clã do usuário logado
+                            // Nota: remoteUsers precisa ter informação de clã ou precisamos cruzar dados
+                            // Por simplicidade aqui, vamos assumir que se ele é um remoteUser visível e está no raio, 
+                            // verificamos se ele pertence aos mesmos clãs buscados em cloudGroups
+                            const isInMyClan = cloudGroups.some((g: any) => 
+                                myClanIds.includes(g.id) && g.group_members?.some((m: any) => m.user_id === u.id)
+                            );
+                            
+                            if (isInMyClan) {
+                                nearbyClanMemsSet.add(u.id);
+                            }
+                        }
+                    }
+                });
+                nearbyClanMembers = nearbyClanMemsSet.size;
+            } catch (err) {
+                console.log("Erro ao buscar localização para missão:", err);
+            }
+        }
+
         setStats({
             coins, level: lvl.level, distTotal, distDaily, distWeekly,
             friendsCount: friends.length, groupCount: cloudGroups.length,
             hasPhoto: !!pet?.customImageUri, spentCoins, maxGroupMembers: maxMems,
+            nearbyClanMembers,
         });
         setClaimedIds(claimed);
     };
@@ -333,6 +386,8 @@ export default function QuestsScreen() {
             val = stats.spentCoins;
         } else if (q.goalType === 'profile_pic') {
             val = stats.hasPhoto ? 1 : 0;
+        } else if (q.goalType === 'clan_event') {
+            val = stats.nearbyClanMembers;
         }
         return Math.max(0, Math.min(1, val / q.target));
     };

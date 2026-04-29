@@ -80,7 +80,7 @@ const GameMapView: React.FC<GameMapViewProps> = ({
 
                 if (m.type === 'merged' && m.players) {
                     // Evitar criar um novo array a cada render se os jogadores não mudarem
-                    const imageUris = m.players.map(p => p.imageUri);
+                    const imageUris = m.players.map(p => p.imageUri || null);
                     const firstPlayerColor = m.players[0]?.color || colors.primary;
 
                     return (
@@ -110,6 +110,7 @@ const GameMapView: React.FC<GameMapViewProps> = ({
                             primaryColor={m.player.color}
                             pet={m.player.pet}
                             avatarUri={m.player.imageUri}
+                            status={m.player.status}
                             isMe={m.player.isMe}
                             onPress={() => {
                                 if (m.player) handleMemberTap(m.player);

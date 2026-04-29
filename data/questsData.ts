@@ -1,5 +1,5 @@
 export type QuestType = 'main' | 'daily' | 'weekly' | 'monthly';
-export type QuestGoalType = 'distance' | 'coins' | 'level' | 'friends' | 'group' | 'group_members' | 'profile_pic' | 'shop_spend';
+export type QuestGoalType = 'distance' | 'coins' | 'level' | 'friends' | 'group' | 'group_members' | 'profile_pic' | 'shop_spend' | 'clan_event';
 
 export interface QuestDef {
     id: string;
@@ -44,6 +44,10 @@ const TEMPLATES: Record<QuestGoalType, { titles: string[], descriptions: (val: n
     shop_spend: {
         titles: ['Consumista', 'Mecenas', 'Esbanjador', 'Cliente VIP'],
         descriptions: (val) => `Invista um total de ${val} moedas comprando itens na loja.`
+    },
+    clan_event: {
+        titles: ['Encontro de Clã', 'Reunião de Elite', 'Força Coletiva', 'União Faz a Força'],
+        descriptions: (val) => `Reúna pelo menos ${val} membros do seu clã no mesmo local físico.`
     }
 };
 
@@ -127,11 +131,13 @@ export const DAILY_QUESTS: QuestDef[] = [
     { id: 'daily_1', type: 'daily', goalType: 'distance', title: 'Caminhada Diária', description: 'Caminhe 1 km hoje na vida real.', target: 1000, reward: 150, xpReward: 200 },
     { id: 'daily_2', type: 'daily', goalType: 'coins', title: 'Hora da Mesada', description: 'Colete 50 PetCoins explorando os quarteirões.', target: 50, reward: 80, xpReward: 100 },
     { id: 'daily_3', type: 'daily', goalType: 'profile_pic', title: 'Boa Impressão', description: 'Tenha uma foto no seu perfil.', target: 1, reward: 50, xpReward: 50 },
+    { id: 'daily_clan_1', type: 'daily', goalType: 'clan_event', title: 'Encontro de Clã', description: 'Reúna pelo menos 3 membros do seu clã no mesmo local físico.', target: 3, reward: 500, xpReward: 1000 },
 ];
 
 export const WEEKLY_QUESTS: QuestDef[] = [
     { id: 'weekly_1', type: 'weekly', goalType: 'distance', title: 'Maratona Semanal', description: 'Caminhe 10 km num período de 7 dias.', target: 10000, reward: 1200, xpReward: 1500 },
     { id: 'weekly_2', type: 'weekly', goalType: 'level', title: 'Treino Contínuo', description: 'Suba seu pet de nível 2 vezes.', target: 2, reward: 800, xpReward: 1000 },
+    { id: 'weekly_clan_1', type: 'weekly', goalType: 'clan_event', title: 'Grande Reunião', description: 'Reúna pelo menos 5 membros do seu clã no mesmo local.', target: 5, reward: 2500, xpReward: 5000 },
 ];
 
 export const MONTHLY_QUESTS: QuestDef[] = [

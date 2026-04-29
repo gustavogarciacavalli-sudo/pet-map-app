@@ -17,11 +17,12 @@ interface RemoteUser {
     location: UserLocation | null;
     imageUri?: string | null;
     isOnline: boolean;
+    status?: string | null;
 }
 
 interface SupabaseRealtimeContextType {
     remoteUsers: Record<string, RemoteUser>;
-    broadcastLocation: (location: UserLocation) => void;
+    broadcastLocation: (location: UserLocation, status?: string | null) => void;
     broadcastSOS: (location: UserLocation, message?: string) => void;
     broadcastSyncInvite: (location: UserLocation) => void;
     broadcastSyncAccept: (targetUserId: string) => void;
@@ -99,7 +100,8 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
                                 pet: presenceInfo.pet || null,
                                 location: presenceInfo.location || null,
                                 imageUri: presenceInfo.imageUri || null,
-                                isOnline: true
+                                isOnline: true,
+                                status: presenceInfo.status || null
                             };
                         });
                         setRemoteUsers(prev => ({ ...prev, ...users }));
@@ -114,6 +116,7 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
                                     ...prev[payload.userId],
                                     location: payload.location,
                                     imageUri: payload.imageUri || prev[payload.userId].imageUri,
+                                    status: payload.status !== undefined ? payload.status : prev[payload.userId].status,
                                     isOnline: true
                                 }
                             };
@@ -134,6 +137,7 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
                                 name: user.name || user.email,
                                 pet: pet,
                                 imageUri: user.avatar_url || user.imageUri || (user as any).avatar || null,
+                                status: null,
                                 online_at: new Date().toISOString(),
                             });
                         }
@@ -152,7 +156,7 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
         };
     }, []);
 
-    const broadcastLocation = (location: UserLocation) => {
+    const broadcastLocation = (location: UserLocation, status?: string | null) => {
         if (channelRef.current && currentUser) {
             channelRef.current.send({
                 type: 'broadcast',
@@ -160,6 +164,7 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
                 payload: {
                     userId: currentUser.id,
                     location: location,
+                    status: status,
                     imageUri: currentUser.avatar_url || currentUser.imageUri || (currentUser as any).avatar || null
                 }
             });

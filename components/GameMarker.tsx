@@ -55,11 +55,13 @@ export const GameMarker: React.FC<GameMarkerProps> = (props) => {
     useEffect(() => {
         if (Platform.OS === 'android') {
             const capture = async () => {
-                // Cache key baseada em propriedades que mudam o visual
-                const cacheKey = `game-marker-${id}-${props.primaryColor}-${props.avatarUri}-${props.heading}-${props.isMe}`;
+                // Arredonda o heading para múltiplos de 15 graus para reduzir snapshots desnecessários
+                const roundedHeading = Math.round((props.heading || 0) / 15) * 15;
+                const cacheKey = `game-marker-${id}-${props.primaryColor}-${props.avatarUri}-${roundedHeading}-${props.isMe}`;
+                
                 const uri = await registerMarker(
                     cacheKey,
-                    <GameMarkerVisual {...props} />,
+                    <GameMarkerVisual {...props} heading={roundedHeading} />,
                     { width: 100, height: 120 }
                 );
                 if (uri) setCapturedUri(uri);
@@ -69,7 +71,7 @@ export const GameMarker: React.FC<GameMarkerProps> = (props) => {
         return () => {
             if (Platform.OS === 'android') unregisterMarker(id);
         };
-    }, [id, props.primaryColor, props.avatarUri, props.heading, props.isMe]);
+    }, [id, props.primaryColor, props.avatarUri, Math.round((props.heading || 0) / 15), props.isMe]);
 
     const icon = Platform.OS === 'android' ? (capturedUri ? { uri: capturedUri } : null) : null;
 

@@ -21,6 +21,7 @@ import { ChatMessage, FriendRequest } from '../types/social';
 import { AuthService } from '../services/AuthService';
 import { supabase } from '../services/supabaseConfig';
 import { NearbyWeb } from '../components/NearbyWeb';
+import { Leaderboard } from '../components/Leaderboard';
 
 export default function SocialScreen() {
     const { colors, isDarkMode } = useTheme();
@@ -28,7 +29,7 @@ export default function SocialScreen() {
     const { tab } = useLocalSearchParams<{ tab?: string }>();
     const [activeTopTab, setActiveTopTab] = useState<'perfil' | 'social' | 'clas'>(tab === 'perfil' ? 'perfil' : 'social');
     const [activeSocialSubTab, setActiveSocialSubTab] = useState<'recomendados' | 'inbox'>('recomendados');
-    const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar'>('meus');
+    const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar' | 'ranking'>('meus');
 
     const [circles, setCircles] = useState<any[]>([]);
     const [selectedCircleId, setSelectedCircleId] = useState<string | null>(null);
@@ -722,19 +723,21 @@ export default function SocialScreen() {
 
             {activeTopTab === 'clas' && (
                 <View style={{ flex: 1 }}>
-                    <View style={styles.searchContainer}>
-                        <Ionicons name="search" size={20} color={colors.subtext} style={{ marginLeft: 16 }} />
-                        <TextInput
-                            style={[styles.searchInput, { color: colors.text, outlineStyle: 'none' } as any]}
-                            placeholder="Buscar clãs..."
-                            placeholderTextColor={colors.subtext}
-                            value={clansSearch}
-                            onChangeText={setClansSearch}
-                        />
-                        <Pressable style={styles.searchActionBtn} onPress={() => setIsCreateModalVisible(true)}>
-                            <Ionicons name="add" size={20} color="#FFF" />
-                        </Pressable>
-                    </View>
+                    {activeClansSubTab !== 'ranking' && (
+                        <View style={styles.searchContainer}>
+                            <Ionicons name="search" size={20} color={colors.subtext} style={{ marginLeft: 16 }} />
+                            <TextInput
+                                style={[styles.searchInput, { color: colors.text, outlineStyle: 'none' } as any]}
+                                placeholder="Buscar clãs..."
+                                placeholderTextColor={colors.subtext}
+                                value={clansSearch}
+                                onChangeText={setClansSearch}
+                            />
+                            <Pressable style={styles.searchActionBtn} onPress={() => setIsCreateModalVisible(true)}>
+                                <Ionicons name="add" size={20} color="#FFF" />
+                            </Pressable>
+                        </View>
+                    )}
                     <View style={styles.subTabBar}>
                         <Pressable onPress={() => setActiveClansSubTab('meus')} style={[styles.subTabBtn, activeClansSubTab === 'meus' && { backgroundColor: colors.accent }]}>
                             <Text style={[styles.subTabText, { color: activeClansSubTab === 'meus' ? colors.primary : colors.subtext }]}>Meus Clãs</Text>
@@ -742,9 +745,13 @@ export default function SocialScreen() {
                         <Pressable onPress={() => setActiveClansSubTab('buscar')} style={[styles.subTabBtn, activeClansSubTab === 'buscar' && { backgroundColor: colors.accent }]}>
                             <Text style={[styles.subTabText, { color: activeClansSubTab === 'buscar' ? colors.primary : colors.subtext }]}>Buscar</Text>
                         </Pressable>
+                        <Pressable onPress={() => setActiveClansSubTab('ranking')} style={[styles.subTabBtn, activeClansSubTab === 'ranking' && { backgroundColor: colors.accent }]}>
+                            <Text style={[styles.subTabText, { color: activeClansSubTab === 'ranking' ? colors.primary : colors.subtext }]}>Ranking</Text>
+                        </Pressable>
                     </View>
                     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
                         {(() => {
+                            if (activeClansSubTab === 'ranking') return <Leaderboard />;
                             const myClans = circles.filter(c => c.members?.some((m: any) => m.id === user?.id));
                             const otherClans = circles.filter(c => !c.members?.some((m: any) => m.id === user?.id));
                             const list = activeClansSubTab === 'meus' ? myClans : otherClans;

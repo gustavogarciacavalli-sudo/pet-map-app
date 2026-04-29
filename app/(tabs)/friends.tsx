@@ -21,6 +21,7 @@ import { ChatMessage, FriendRequest } from '../../types/social';
 import { AuthService } from '../../services/AuthService';
 import { supabase } from '../../services/supabaseConfig';
 import { NearbyWeb } from '../../components/NearbyWeb';
+import { Leaderboard } from '../../components/Leaderboard';
 
 export default function SocialScreen() {
     const { colors, isDarkMode } = useTheme();
@@ -28,7 +29,7 @@ export default function SocialScreen() {
     const { tab } = useLocalSearchParams<{ tab?: string }>();
     const [activeTopTab, setActiveTopTab] = useState<'perfil' | 'social' | 'clas'>(tab === 'perfil' ? 'perfil' : 'social');
     const [activeSocialSubTab, setActiveSocialSubTab] = useState<'recomendados' | 'inbox'>('recomendados');
-    const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar'>('meus');
+    const [activeClansSubTab, setActiveClansSubTab] = useState<'meus' | 'buscar' | 'ranking'>('meus');
 
     // Estados para Clãs
     const [circles, setCircles] = useState<any[]>([]);
@@ -621,6 +622,9 @@ export default function SocialScreen() {
                         <Pressable onPress={() => setActiveClansSubTab('buscar')} style={[styles.subTabBtn, activeClansSubTab === 'buscar' && { backgroundColor: colors.accent }]}>
                             <Text style={[styles.subTabText, { color: activeClansSubTab === 'buscar' ? colors.primary : colors.subtext }]}>Buscar</Text>
                         </Pressable>
+                        <Pressable onPress={() => setActiveClansSubTab('ranking')} style={[styles.subTabBtn, activeClansSubTab === 'ranking' && { backgroundColor: colors.accent }]}>
+                            <Text style={[styles.subTabText, { color: activeClansSubTab === 'ranking' ? colors.primary : colors.subtext }]}>Ranking</Text>
+                        </Pressable>
                     </View>
 
                     {/* Search e Add Button */}
@@ -640,57 +644,63 @@ export default function SocialScreen() {
                         </Pressable>
                     </View>
 
-                    {/* Lista de círculos */}
-                    {circles
-                        .filter((c: any) => {
-                            const isMember = c.members.includes(user?.id);
-                            if (activeClansSubTab === 'meus') return isMember;
-                            return !isMember; 
-                        })
-                        .filter(c => c.name.toLowerCase().includes(clansSearch.toLowerCase()))
-                        .map(circle => (
-                            <Pressable
-                                key={circle.id}
-                                style={[styles.circleRow, { borderBottomColor: colors.border }]}
-                                onPress={() => {
-                                    setSelectedCircleId(circle.id);
-                                    const isMember = circle.members.includes(user?.id);
-                                    if (isMember || circle.isPublic) {
-                                        setIsDetailModalVisible(true);
-                                    } else {
-                                        setIsPassModalVisible(true);
-                                    }
-                                }}
-                            >
-                                <View style={styles.circleAvatars}>
-                                    {circle.members.slice(0, 3).map((m: any, i: number) => {
-                                        if (!m) return null;
-                                        return (
-                                            <View key={`${m.id || i}_${i}`} style={[styles.stackedAvatar, {
-                                                marginLeft: i > 0 ? -12 : 0,
-                                                zIndex: 3 - i,
-                                                borderColor: colors.card,
-                                                backgroundColor: isDarkMode ? '#2A2A36' : '#F0EDFA',
-                                            }]}>
-                                                {m.avatar || m.species ? (
-                                                    <PetPreview species={m.species || 'bunny'} size={40} customImageUri={m.avatar} />
-                                                ) : (
-                                                    <Text style={{ fontSize: 14, fontWeight: '800', color: colors.primary }}>{(m.name || '?')[0]}</Text>
-                                                )}
-                                            </View>
-                                        );
-                                    })}
-                                    {circle.members.length > 3 && (
-                                        <View style={[styles.stackedAvatar, styles.countBadge, { marginLeft: -12, backgroundColor: colors.primary }]}>
-                                            <Text style={styles.countBadgeText}>+{String(circle.members.length - 3)}</Text>
+                    {activeClansSubTab === 'ranking' ? (
+                        <Leaderboard />
+                    ) : (
+                        <>
+                            {/* Lista de círculos */}
+                            {circles
+                                .filter((c: any) => {
+                                    const isMember = c.members.includes(user?.id);
+                                    if (activeClansSubTab === 'meus') return isMember;
+                                    return !isMember; 
+                                })
+                                .filter(c => c.name.toLowerCase().includes(clansSearch.toLowerCase()))
+                                .map(circle => (
+                                    <Pressable
+                                        key={circle.id}
+                                        style={[styles.circleRow, { borderBottomColor: colors.border }]}
+                                        onPress={() => {
+                                            setSelectedCircleId(circle.id);
+                                            const isMember = circle.members.includes(user?.id);
+                                            if (isMember || circle.isPublic) {
+                                                setIsDetailModalVisible(true);
+                                            } else {
+                                                setIsPassModalVisible(true);
+                                            }
+                                        }}
+                                    >
+                                        <View style={styles.circleAvatars}>
+                                            {circle.members.slice(0, 3).map((m: any, i: number) => {
+                                                if (!m) return null;
+                                                return (
+                                                    <View key={`${m.id || i}_${i}`} style={[styles.stackedAvatar, {
+                                                        marginLeft: i > 0 ? -12 : 0,
+                                                        zIndex: 3 - i,
+                                                        borderColor: colors.card,
+                                                        backgroundColor: isDarkMode ? '#2A2A36' : '#F0EDFA',
+                                                    }]}>
+                                                        {m.avatar || m.species ? (
+                                                            <PetPreview species={m.species || 'bunny'} size={40} customImageUri={m.avatar} />
+                                                        ) : (
+                                                            <Text style={{ fontSize: 14, fontWeight: '800', color: colors.primary }}>{(m.name || '?')[0]}</Text>
+                                                        )}
+                                                    </View>
+                                                );
+                                            })}
+                                            {circle.members.length > 3 && (
+                                                <View style={[styles.stackedAvatar, styles.countBadge, { marginLeft: -12, backgroundColor: colors.primary }]}>
+                                                    <Text style={styles.countBadgeText}>+{String(circle.members.length - 3)}</Text>
+                                                </View>
+                                            )}
                                         </View>
-                                    )}
-                                </View>
-                                <Text style={[styles.circleName, { color: colors.text }]}>{circle.name}</Text>
-                                {!circle.isPublic && <Ionicons name="lock-closed-outline" size={14} color={colors.subtext} style={{ marginRight: 4 }} />}
-                                <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
-                            </Pressable>
-                        ))}
+                                        <Text style={[styles.circleName, { color: colors.text }]}>{circle.name}</Text>
+                                        {!circle.isPublic && <Ionicons name="lock-closed-outline" size={14} color={colors.subtext} style={{ marginRight: 4 }} />}
+                                        <Ionicons name="chevron-forward" size={18} color={colors.subtext} />
+                                    </Pressable>
+                                ))}
+                        </>
+                    )}
 
                     <View style={{ height: 20 }} />
 

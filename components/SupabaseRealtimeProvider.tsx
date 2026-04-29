@@ -214,16 +214,18 @@ export const SupabaseRealtimeProvider: React.FC<{ children: React.ReactNode }> =
     const setOnSyncInvite = (cb: (payload: any) => void) => { onSyncInviteRef.current = cb; };
     const setOnSyncAccept = (cb: (payload: any) => void) => { onSyncAcceptRef.current = cb; };
 
+    const contextValue = React.useMemo(() => ({
+        remoteUsers, 
+        broadcastLocation, 
+        broadcastSOS,
+        broadcastSyncInvite,
+        broadcastSyncAccept,
+        setOnSyncInvite,
+        setOnSyncAccept
+    }), [remoteUsers]);
+
     return (
-        <SupabaseRealtimeContext.Provider value={{ 
-            remoteUsers, 
-            broadcastLocation, 
-            broadcastSOS,
-            broadcastSyncInvite,
-            broadcastSyncAccept,
-            setOnSyncInvite,
-            setOnSyncAccept
-        }}>
+        <SupabaseRealtimeContext.Provider value={contextValue}>
             {children}
         </SupabaseRealtimeContext.Provider>
     );

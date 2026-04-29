@@ -7,7 +7,6 @@ import { getPetLocal, LocalPet, getCurrentUserLocal, LocalUser, getCoinsLocal, g
 import { AuthService } from '../services/AuthService';
 import { NotificationService } from '../services/NotificationService';
 import { useToast } from './ToastProvider';
-import { Leaderboard } from './Leaderboard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MAIN_QUESTS, DAILY_QUESTS, WEEKLY_QUESTS, MONTHLY_QUESTS } from '../data/questsData';
 import { MaterialCommunityIcons, FontAwesome5, Ionicons } from '@expo/vector-icons';
@@ -817,7 +816,6 @@ export function ProfileView() {
                     </Animated.View>
                 </View>
 
-                <Leaderboard />
 
                 <Text style={[styles.version, { color: colors.subtext }]}>WanderPet v2.0.0</Text>
             </ScrollView>

@@ -23,6 +23,35 @@ export const useMarkerCapture = () => {
 
 const globalImageCache: Record<string, string> = {};
 
+const CaptureOverlay = ({ queue, onCapture, viewShotRefs }: { 
+  queue: CaptureItem[], 
+  onCapture: (id: string, uri: string) => void,
+  viewShotRefs: React.MutableRefObject<Record<string, ViewShot | null>>
+}) => {
+  // Este componente re-renderiza apenas quando o queue muda, 
+  // mas como ele é um vizinho do 'children', o 'children' não re-renderiza.
+  return (
+    <View style={styles.hiddenArea} pointerEvents="none">
+      {queue.map(item => (
+        <View 
+          key={item.id} 
+          style={[
+            styles.captureContainer, 
+            item.options ? { width: item.options.width, height: item.options.height } : null
+          ]}
+        >
+          <ViewShot
+            ref={ref => { viewShotRefs.current[item.id] = ref; }}
+            options={{ format: 'png', quality: 1.0 }}
+          >
+            {item.component}
+          </ViewShot>
+        </View>
+      ))}
+    </View>
+  );
+};
+
 export const MarkerCaptureProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [captureQueue, setCaptureQueue] = useState<CaptureItem[]>([]);
   const viewShotRefs = useRef<Record<string, ViewShot | null>>({});
@@ -41,7 +70,10 @@ export const MarkerCaptureProvider: React.FC<{ children: React.ReactNode }> = ({
         resolve(uri);
       };
 
-      setCaptureQueue(prev => [...prev, { id, component, options }]);
+      setCaptureQueue(prev => {
+        if (prev.find(i => i.id === id)) return prev;
+        return [...prev, { id, component, options }];
+      });
     });
   }, []);
 
@@ -50,52 +82,41 @@ export const MarkerCaptureProvider: React.FC<{ children: React.ReactNode }> = ({
     delete captureCallbacks.current[id];
   }, []);
 
-  const onCapture = (id: string, uri: string) => {
+  const handleCapture = (id: string, uri: string) => {
     if (captureCallbacks.current[id]) {
       captureCallbacks.current[id](uri);
       delete captureCallbacks.current[id];
     }
   };
 
-  // Efeito para disparar a captura manual após um delay (para carregar imagens)
+  const processingIds = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     captureQueue.forEach(item => {
+      if (processingIds.current.has(item.id)) return;
+
+      processingIds.current.add(item.id);
+      
       const timer = setTimeout(async () => {
         const ref = viewShotRefs.current[item.id];
         if (ref && ref.capture) {
           try {
             const uri = await ref.capture();
-            onCapture(item.id, uri);
+            handleCapture(item.id, uri);
+            processingIds.current.delete(item.id);
           } catch (e) {
             console.error('Capture failed for', item.id, e);
+            processingIds.current.delete(item.id);
           }
         }
-      }, 800); // 800ms de folga para carregar imagens remotas
-      return () => clearTimeout(timer);
+      }, 800);
     });
   }, [captureQueue]);
 
   return (
     <MarkerCaptureContext.Provider value={{ registerMarker, unregisterMarker }}>
       {children}
-      <View style={styles.hiddenArea} pointerEvents="none">
-        {captureQueue.map(item => (
-          <View 
-            key={item.id} 
-            style={[
-              styles.captureContainer, 
-              item.options ? { width: item.options.width, height: item.options.height } : null
-            ]}
-          >
-            <ViewShot
-              ref={ref => { viewShotRefs.current[item.id] = ref; }}
-              options={{ format: 'png', quality: 1.0 }}
-            >
-              {item.component}
-            </ViewShot>
-          </View>
-        ))}
-      </View>
+      <CaptureOverlay queue={captureQueue} onCapture={handleCapture} viewShotRefs={viewShotRefs} />
     </MarkerCaptureContext.Provider>
   );
 };

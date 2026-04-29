@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Animated, Easing, DeviceEventEmitter } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Animated, Easing, DeviceEventEmitter, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FontAwesome5, MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { getCoinsLocal, saveCoinsLocal, addXPLocal, getLevelDataLocal, getTotalDistanceLocal, getClaimedQuestsLocal, claimQuestLocal, getWeeklyActivityLocal, getPetLocal, getSpentCoinsLocal, getCurrentUserLocal } from '../../localDatabase';
@@ -7,6 +7,71 @@ import { AuthService } from '../../services/AuthService';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useTheme } from '../../components/ThemeContext';
 import { MAIN_QUESTS, DAILY_QUESTS, WEEKLY_QUESTS, MONTHLY_QUESTS, QuestDef, QuestType } from '../../data/questsData';
+
+// ─── Reward Modal Component ───
+function RewardModal({ visible, onClose, reward, xp, levelUp, level, colors }: any) {
+    const scale = useRef(new Animated.Value(0)).current;
+    
+    useEffect(() => {
+        if (visible) {
+            Animated.spring(scale, {
+                toValue: 1,
+                tension: 50,
+                friction: 7,
+                useNativeDriver: true
+            }).start();
+        } else {
+            scale.setValue(0);
+        }
+    }, [visible]);
+
+    return (
+        <Modal transparent visible={visible} animationType="fade">
+            <View style={styles.modalOverlay}>
+                <Animated.View style={[
+                    styles.rewardModal,
+                    { 
+                        backgroundColor: colors.card,
+                        borderColor: colors.primary + '40',
+                        transform: [{ scale }]
+                    }
+                ]}>
+                    <View style={[styles.rewardIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                        <Ionicons name="trophy" size={40} color={colors.primary} />
+                    </View>
+                    
+                    <Text style={[styles.rewardModalTitle, { color: colors.text }]}>Missão Concluída!</Text>
+                    
+                    <View style={styles.rewardStatsRow}>
+                        <View style={styles.rewardStatItem}>
+                            <Ionicons name="wallet" size={20} color={colors.primary} />
+                            <Text style={[styles.rewardStatValue, { color: colors.text }]}>+{reward}</Text>
+                            <Text style={[styles.rewardStatLabel, { color: colors.subtext }]}>PetCoins</Text>
+                        </View>
+                        <View style={styles.rewardStatItem}>
+                            <Ionicons name="sparkles" size={20} color="#DAA520" />
+                            <Text style={[styles.rewardStatValue, { color: colors.text }]}>+{xp}</Text>
+                            <Text style={[styles.rewardStatLabel, { color: colors.subtext }]}>Experiência</Text>
+                        </View>
+                    </View>
+
+                    {levelUp && (
+                        <View style={styles.levelUpBadge}>
+                            <Text style={styles.levelUpText}>NÍVEL {level} ALCANÇADO!</Text>
+                        </View>
+                    )}
+
+                    <Pressable 
+                        style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                        onPress={onClose}
+                    >
+                        <Text style={styles.modalButtonText}>Incrível!</Text>
+                    </Pressable>
+                </Animated.View>
+            </View>
+        </Modal>
+    );
+}
 
 // ─── Animated Tab Indicator ───
 function TabSelector({ activeTab, onTabChange, colors, isDarkMode }: any) {
@@ -111,11 +176,24 @@ function QuestCard({ quest, progress, isClaimed, isCompleted, onClaim, colors, i
                             ? '#DAA52015'
                             : (isDarkMode ? '#ffffff08' : '#00000006')
                 }]}>
-                    <MaterialCommunityIcons
-                        name={isClaimed ? "check-circle" : isCompleted ? "medal" : "sword-cross"}
-                        size={22}
-                        color={isClaimed ? colors.primary : isCompleted ? "#DAA520" : colors.subtext}
-                    />
+                    {isCompleted && !isClaimed ? (
+                        <Animated.View style={{
+                            transform: [{
+                                scale: glowAnim.interpolate({
+                                    inputRange: [0, 0.5, 1],
+                                    outputRange: [1, 1.2, 1]
+                                })
+                            }]
+                        }}>
+                            <MaterialCommunityIcons name="treasure-chest" size={26} color="#DAA520" />
+                        </Animated.View>
+                    ) : (
+                        <MaterialCommunityIcons
+                            name={isClaimed ? "check-circle" : "sword-cross"}
+                            size={22}
+                            color={isClaimed ? colors.primary : colors.subtext}
+                        />
+                    )}
                 </View>
 
                 {/* Content */}
@@ -169,6 +247,7 @@ export default function QuestsScreen() {
     });
 
     const [claimedIds, setClaimedIds] = useState<string[]>([]);
+    const [rewardModalData, setRewardModalData] = useState<any>(null);
 
     // Entry animation
     const fadeIn = useRef(new Animated.Value(0)).current;
@@ -269,9 +348,12 @@ export default function QuestsScreen() {
         const xpResult = await addXPLocal(quest.xpReward);
 
         loadStats();
-
-        const msg = xpResult.leveledUp ? `\n\nSeu explorador subiu para o Nível ${xpResult.level}!` : "";
-        Alert.alert('Recompensa Resgatada', `Você recebeu ${quest.reward} PetCoins e ${quest.xpReward} XP.${msg}`);
+        setRewardModalData({
+            reward: quest.reward,
+            xp: quest.xpReward,
+            levelUp: xpResult.leveledUp,
+            level: xpResult.level
+        });
     };
 
     const getActiveList = () => {
@@ -352,6 +434,16 @@ export default function QuestsScreen() {
                     </View>
                 )}
             </ScrollView>
+
+            <RewardModal 
+                visible={!!rewardModalData} 
+                onClose={() => setRewardModalData(null)}
+                reward={rewardModalData?.reward}
+                xp={rewardModalData?.xp}
+                levelUp={rewardModalData?.levelUp}
+                level={rewardModalData?.level}
+                colors={colors}
+            />
         </SafeAreaView>
     );
 }
@@ -469,4 +561,83 @@ const styles = StyleSheet.create({
     },
     emptyTitle: { fontSize: 18, fontWeight: '800', marginBottom: 6 },
     emptySubtitle: { fontSize: 14, fontWeight: '500', textAlign: 'center', lineHeight: 20 },
+
+    // ─── Modal ───
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24
+    },
+    rewardModal: {
+        width: '100%',
+        borderRadius: 32,
+        padding: 32,
+        alignItems: 'center',
+        borderWidth: 1,
+        elevation: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+    },
+    rewardIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+    },
+    rewardModalTitle: {
+        fontSize: 24,
+        fontWeight: '900',
+        marginBottom: 24,
+        textAlign: 'center',
+    },
+    rewardStatsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        width: '100%',
+        marginBottom: 32,
+    },
+    rewardStatItem: {
+        alignItems: 'center',
+    },
+    rewardStatValue: {
+        fontSize: 20,
+        fontWeight: '900',
+        marginTop: 8,
+    },
+    rewardStatLabel: {
+        fontSize: 12,
+        fontWeight: '700',
+        marginTop: 4,
+    },
+    levelUpBadge: {
+        backgroundColor: '#DAA520',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 12,
+        marginBottom: 24,
+    },
+    levelUpText: {
+        color: '#FFF',
+        fontSize: 14,
+        fontWeight: '900',
+        letterSpacing: 1,
+    },
+    modalButton: {
+        width: '100%',
+        height: 56,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    modalButtonText: {
+        color: '#FFF',
+        fontSize: 16,
+        fontWeight: '800',
+    },
 });

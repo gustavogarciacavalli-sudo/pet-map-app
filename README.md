@@ -117,5 +117,5 @@ CREATE TABLE public.profiles (
 ```
 
 ---
-*Desenvolvido com ❤️ pela equipe WanderPet. Transformando cada passo em uma nova aventura.*
+*Desenvolvido com ❤️. Transformando cada passo em uma nova aventura.*
 
